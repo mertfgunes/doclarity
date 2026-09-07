@@ -1,0 +1,65 @@
+import os
+import uuid
+from typing import List
+
+from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.db import get_db
+from app.models.document import Document, ProcessingStatus
+from app.models.schemas import DocumentOut
+
+router = APIRouter(prefix="/documents", tags=["documents"])
+
+ALLOWED_CONTENT_TYPES = {
+    "application/pdf",
+    "text/csv",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+    "text/plain",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+}
+
+
+@router.post("/upload", response_model=DocumentOut)
+async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
+
+    os.makedirs(settings.upload_dir, exist_ok=True)
+
+    file_id = uuid.uuid4()
+    ext = os.path.splitext(file.filename)[1]
+    storage_path = os.path.join(settings.upload_dir, f"{file_id}{ext}")
+
+    contents = await file.read()
+    with open(storage_path, "wb") as f:
+        f.write(contents)
+
+    doc = Document(
+        id=file_id,
+        filename=file.filename,
+        content_type=file.content_type,
+        storage_path=storage_path,
+        status=ProcessingStatus.uploaded,
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    # Slice 2 will kick off a Celery task here to extract/parse the file.
+
+    return doc
+
+
+@router.get("", response_model=List[DocumentOut])
+def list_documents(db: Session = Depends(get_db)):
+    return db.query(Document).order_by(Document.uploaded_at.desc()).all()
+
+
+@router.get("/{document_id}", response_model=DocumentOut)
+def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)):
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return doc
