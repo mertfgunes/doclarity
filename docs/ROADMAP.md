@@ -3,9 +3,9 @@
 Each slice should be runnable end-to-end and demoable before moving to the
 next one. Don't start Slice N+1 until Slice N works.
 
-## Slice 1 — Upload → store → list  [scaffolded]
+## Slice 1 — Upload → store → list  [done]
 - [x] `Document` model, upload endpoint, list endpoint
-- [ ] Basic Next.js page: drag-and-drop upload + document list table
+- [x] Basic Next.js page: drag-and-drop upload + document list table
 
 ## Slice 2 — Extract → structure  [scaffolded]
 - [x] Celery worker triggered on upload (`extract_document` task, retry with
@@ -35,8 +35,6 @@ next one. Don't start Slice N+1 until Slice N works.
       to see real `processed` rows without API spend. Still open: one true
       run with a real key, to confirm the actual extraction prompt behaves
       as expected end to end.
-- [ ] Basic Next.js page: drag-and-drop upload + document list table (still
-      pending from Slice 1)
 
 ## Slice 3 — Embed → RAG Q&A with citations
 - [ ] `document_chunks` table (raw text chunks + pgvector embedding column) —
