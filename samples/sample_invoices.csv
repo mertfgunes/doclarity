@@ -1,0 +1,4 @@
+Vendor,Invoice No,Amount Due,Currency Code,Billed On,Payment Due
+Acme Supplies Ltd,INV-2001,842.50,EUR,2026-08-01,2026-08-31
+Northwind Traders,INV-2002,150.00,USD,2026-08-03,2026-09-02
+Globex Corp,INV-2003,99999.99,ZZZ,2026-08-05,2026-09-04

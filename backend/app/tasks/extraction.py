@@ -79,7 +79,9 @@ def _make_row(
         flags: list[str] = []
         status = ExtractionStatus.failed
     else:
-        flags = validate_extraction(total_amount, currency, invoice_date, due_date, line_items)
+        flags = validate_extraction(
+            total_amount, currency, invoice_date, due_date, line_items, document_type=document_type.value
+        )
         status = ExtractionStatus.needs_review if flags else ExtractionStatus.completed
 
     return DocumentExtraction(

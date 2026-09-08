@@ -52,3 +52,8 @@ def test_tolerates_small_rounding_difference():
 def test_flags_missing_total():
     flags = validate_extraction(None, "USD", None, None, None)
     assert any("total_amount" in f for f in flags)
+
+
+def test_contract_does_not_require_total_amount():
+    flags = validate_extraction(None, None, None, None, None, document_type="contract")
+    assert flags == []

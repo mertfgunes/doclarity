@@ -25,11 +25,16 @@ next one. Don't start Slice N+1 until Slice N works.
 - [x] Validation layer: line items vs. total, plausible dates, real ISO 4217
       currency codes → flags low-confidence rows as `needs_review` rather
       than trusting the extraction blindly
-- [ ] Verified end-to-end against a live Postgres + real sample PDF/CSV
-      (blocked locally on Docker Desktop not running — rerun
-      `docker compose up -d` then `uvicorn app.main:app --reload` to confirm
-      `document_extractions` is created, and exercise the upload → Celery →
-      extraction path with a real ANTHROPIC_API_KEY)
+- [x] Verified end-to-end against a live Postgres + Redis + Celery worker:
+      `tests/integration/test_live_api.py` uploads real sample files through
+      the real API and confirms Celery picks them up and reaches a terminal
+      status (auto-skips if the server isn't running). Ran without a real
+      `ANTHROPIC_API_KEY`, so the terminal status observed is `failed` (401
+      from Anthropic, handled cleanly - no retry storm); `scripts/seed_demo_data.py`
+      exercises the same parsing/validation/DB path with the LLM call stubbed,
+      to see real `processed` rows without API spend. Still open: one true
+      run with a real key, to confirm the actual extraction prompt behaves
+      as expected end to end.
 - [ ] Basic Next.js page: drag-and-drop upload + document list table (still
       pending from Slice 1)
 

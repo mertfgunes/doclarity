@@ -31,9 +31,14 @@ def validate_extraction(
     invoice_date: date | None,
     due_date: date | None,
     line_items: list[dict] | None,
+    document_type: str = "invoice",
 ) -> list[str]:
     """Sanity-check an LLM extraction. Returns a list of human-readable flags;
     an empty list means nothing looked suspicious.
+
+    The canonical columns (total_amount, currency, ...) are invoice-shaped,
+    so a missing total_amount is only suspicious for document_type="invoice" -
+    contracts and unknown documents don't have one to extract.
     """
     flags: list[str] = []
 
@@ -65,7 +70,7 @@ def validate_extraction(
                     f"Line items sum to {line_items_sum} but total_amount is {total_amount}"
                 )
 
-    if total_amount is None:
+    if total_amount is None and document_type == "invoice":
         flags.append("No total_amount extracted")
 
     return flags
