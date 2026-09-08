@@ -7,7 +7,10 @@ documents.
 
 ## Status
 
-**Slice 1 (this commit): Upload → store → list.**
+**Slice 2 (this commit): Extract → structure.** Upload now kicks off a Celery
+task that parses the file (pdfplumber for PDF, pandas for CSV/XLSX) and calls
+the LLM with a forced tool-use schema to pull structured fields into
+`document_extractions`, with a validation pass flagging low-confidence rows.
 See `docs/ROADMAP.md` for the full slice-by-slice plan.
 
 ## Stack
@@ -30,14 +33,22 @@ See `docs/ROADMAP.md` for the full slice-by-slice plan.
    cp .env.example .env   # fill in ANTHROPIC_API_KEY
    uvicorn app.main:app --reload
    ```
-3. Check it's alive: `curl http://localhost:8000/health`
-4. Try an upload:
+3. Celery worker (separate terminal, same venv — Windows needs the `solo`
+   pool since the default `prefork` pool doesn't work there):
+   ```bash
+   cd backend
+   celery -A app.core.celery_app worker --loglevel=info --pool=solo
+   ```
+4. Check the API's alive: `curl http://localhost:8000/health`
+5. Try an upload — this enqueues an extraction task; poll the extractions
+   endpoint until `status` moves off `processing`:
    ```bash
    curl -F "file=@sample.pdf" http://localhost:8000/documents/upload
    curl http://localhost:8000/documents
+   curl http://localhost:8000/documents/{id}/extractions
    ```
 
-Frontend scaffolding comes in the next slice, once the upload/list API is
+Frontend scaffolding comes in a later slice, once the extraction pipeline is
 solid.
 
 ## Why this architecture

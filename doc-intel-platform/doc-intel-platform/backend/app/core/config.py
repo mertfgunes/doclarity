@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     # LLM
     anthropic_api_key: str = ""
+    llm_model: str = "claude-sonnet-5"
 
     # Storage (local for dev; swap for S3 in production phase)
     upload_dir: str = "./uploaded_files"

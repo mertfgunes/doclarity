@@ -7,15 +7,35 @@ next one. Don't start Slice N+1 until Slice N works.
 - [x] `Document` model, upload endpoint, list endpoint
 - [ ] Basic Next.js page: drag-and-drop upload + document list table
 
-## Slice 2 — Extract → structure
-- [ ] Celery worker triggered on upload
-- [ ] PDF text extraction (pypdf), CSV/XLSX parsing (pandas)
-- [ ] `document_chunks` table (raw text chunks, for embedding later)
-- [ ] For structured docs (invoices): an extraction prompt to Claude that
-      returns JSON (customer, amount, currency, due date) → save to an
-      `invoices`/`transactions` table
+## Slice 2 — Extract → structure  [scaffolded]
+- [x] Celery worker triggered on upload (`extract_document` task, retry with
+      backoff on transient LLM errors, permanent failures fail fast)
+- [x] PDF text + table extraction (pdfplumber), CSV/XLSX parsing (pandas) —
+      both deterministic, no LLM
+- [x] `document_type` (invoice / contract / unknown) decided per document by
+      the LLM, with type-specific extraction fields — not one flexible schema
+- [x] `document_extractions` table: canonical invoice-shaped columns
+      (vendor_name, invoice_number, invoice_date, due_date, total_amount,
+      currency, payment_terms_days) + `line_items`/`raw_extraction` JSONB +
+      `confidence_flags`. One row per PDF invoice/contract; one row per CSV
+      row (CSV columns are semantically mapped to the canonical schema by a
+      single LLM call, then applied deterministically per row)
+- [x] Structuring via forced tool-use (JSON-schema enforced), not free-text
+      parsing of the LLM response
+- [x] Validation layer: line items vs. total, plausible dates, real ISO 4217
+      currency codes → flags low-confidence rows as `needs_review` rather
+      than trusting the extraction blindly
+- [ ] Verified end-to-end against a live Postgres + real sample PDF/CSV
+      (blocked locally on Docker Desktop not running — rerun
+      `docker compose up -d` then `uvicorn app.main:app --reload` to confirm
+      `document_extractions` is created, and exercise the upload → Celery →
+      extraction path with a real ANTHROPIC_API_KEY)
+- [ ] Basic Next.js page: drag-and-drop upload + document list table (still
+      pending from Slice 1)
 
 ## Slice 3 — Embed → RAG Q&A with citations
+- [ ] `document_chunks` table (raw text chunks + pgvector embedding column) —
+      not needed until RAG, so it wasn't built in Slice 2
 - [ ] Generate embeddings for each chunk (store in pgvector column)
 - [ ] `/ask` endpoint: embed the question, vector search, pass top chunks +
       question to Claude, return answer + source doc/page

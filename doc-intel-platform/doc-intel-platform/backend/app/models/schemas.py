@@ -1,9 +1,12 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 from app.models.document import ProcessingStatus
+from app.models.extraction import DocumentType, ExtractionStatus
 
 
 class DocumentOut(BaseModel):
@@ -12,6 +15,31 @@ class DocumentOut(BaseModel):
     content_type: str
     status: ProcessingStatus
     uploaded_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentExtractionOut(BaseModel):
+    id: uuid.UUID
+    document_id: uuid.UUID
+    document_type: DocumentType
+    status: ExtractionStatus
+
+    vendor_name: Optional[str] = None
+    invoice_number: Optional[str] = None
+    invoice_date: Optional[date] = None
+    due_date: Optional[date] = None
+    total_amount: Optional[Decimal] = None
+    currency: Optional[str] = None
+    payment_terms_days: Optional[int] = None
+
+    line_items: Optional[list[dict[str, Any]]] = None
+    raw_extraction: Optional[dict[str, Any]] = None
+    confidence_flags: list[str] = []
+
+    error_message: Optional[str] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True

@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.models.document import Document, ProcessingStatus
-from app.models.schemas import DocumentOut
+from app.models.extraction import DocumentExtraction
+from app.models.schemas import DocumentExtractionOut, DocumentOut
+from app.tasks.extraction import extract_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -47,7 +49,7 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     db.commit()
     db.refresh(doc)
 
-    # Slice 2 will kick off a Celery task here to extract/parse the file.
+    extract_document.delay(str(doc.id))
 
     return doc
 
@@ -63,3 +65,16 @@ def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
+
+
+@router.get("/{document_id}/extractions", response_model=List[DocumentExtractionOut])
+def get_document_extractions(document_id: uuid.UUID, db: Session = Depends(get_db)):
+    doc = db.query(Document).filter(Document.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return (
+        db.query(DocumentExtraction)
+        .filter(DocumentExtraction.document_id == document_id)
+        .order_by(DocumentExtraction.created_at)
+        .all()
+    )
