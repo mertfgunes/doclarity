@@ -8,7 +8,7 @@ from app.api import documents
 # Creates tables directly for now; swap for Alembic migrations once the schema stabilizes.
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="AI Analytics & Document Intelligence Platform")
+app = FastAPI(title="Doclarity")
 
 app.add_middleware(
     CORSMiddleware,

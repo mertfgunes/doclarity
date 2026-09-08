@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     """Central app config. Values are loaded from environment variables / .env file."""
 
     # Postgres
-    database_url: str = "postgresql://docintel:docintel@localhost:5432/docintel"
+    database_url: str = "postgresql://doclarity:doclarity@localhost:5432/doclarity"
 
     # Redis / Celery
     redis_url: str = "redis://localhost:6379/0"

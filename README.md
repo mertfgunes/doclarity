@@ -1,6 +1,7 @@
-# AI Analytics & Document Intelligence Platform
+# Doclarity
 
-Upload invoices, contracts, and financial docs → extract structured data → ask
+AI analytics & document intelligence platform. Upload invoices, contracts,
+and financial docs → extract structured data → ask
 questions in natural language (RAG for document Q&A, text-to-SQL for
 analytics) → get dashboards and anomaly alerts, with citations back to source
 documents.

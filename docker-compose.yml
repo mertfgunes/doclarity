@@ -3,12 +3,12 @@ version: "3.9"
 services:
   postgres:
     image: ankane/pgvector:latest   # Postgres + pgvector extension baked in
-    container_name: docintel_postgres
+    container_name: doclarity_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: docintel
-      POSTGRES_PASSWORD: docintel
-      POSTGRES_DB: docintel
+      POSTGRES_USER: doclarity
+      POSTGRES_PASSWORD: doclarity
+      POSTGRES_DB: doclarity
     ports:
       - "5432:5432"
     volumes:
@@ -16,7 +16,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: docintel_redis
+    container_name: doclarity_redis
     restart: unless-stopped
     ports:
       - "6379:6379"
