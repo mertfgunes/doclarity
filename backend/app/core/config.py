@@ -11,8 +11,18 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # LLM
+    # "anthropic" (paid, real API key) or "ollama" (free, local/cloud via Ollama).
+    llm_provider: str = "ollama"
     anthropic_api_key: str = ""
     llm_model: str = "claude-sonnet-5"
+
+    # Embeddings - Anthropic has no embeddings API, so this is separate from
+    # llm_provider and always goes through Ollama for now.
+    embedding_provider: str = "ollama"
+
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_chat_model: str = "llama3.2:3b"
+    ollama_embed_model: str = "nomic-embed-text"
 
     # Storage (local for dev; swap for S3 in production phase)
     upload_dir: str = "./uploaded_files"

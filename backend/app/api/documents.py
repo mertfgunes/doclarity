@@ -10,6 +10,7 @@ from app.core.db import get_db
 from app.models.document import Document, ProcessingStatus
 from app.models.extraction import DocumentExtraction
 from app.models.schemas import DocumentExtractionOut, DocumentOut
+from app.tasks.embedding import embed_document
 from app.tasks.extraction import extract_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -50,6 +51,7 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     db.refresh(doc)
 
     extract_document.delay(str(doc.id))
+    embed_document.delay(str(doc.id))
 
     return doc
 

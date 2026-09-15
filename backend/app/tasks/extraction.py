@@ -3,7 +3,6 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-import anthropic
 from celery.exceptions import MaxRetriesExceededError
 from dateutil import parser as dateutil_parser
 
@@ -12,7 +11,7 @@ from app.core.db import SessionLocal
 from app.models.document import Document, ProcessingStatus
 from app.models.extraction import DocumentExtraction, DocumentType, ExtractionStatus
 from app.services.csv_parser import parse_tabular_file
-from app.services.llm_service import CANONICAL_INVOICE_FIELDS, LLMService
+from app.services.llm_service import CANONICAL_INVOICE_FIELDS, LLMService, LLMTransientError
 from app.services.pdf_parser import extract_pdf_text
 from app.services.validation import validate_extraction
 
@@ -26,11 +25,7 @@ TABULAR_CONTENT_TYPES = {
 
 # Transient failures worth retrying; anything else (bad file, missing tool
 # call, unparseable data) is a permanent failure and retrying won't help.
-TRANSIENT_LLM_ERRORS = (
-    anthropic.APIConnectionError,
-    anthropic.RateLimitError,
-    anthropic.InternalServerError,
-)
+TRANSIENT_LLM_ERRORS = (LLMTransientError,)
 
 
 def _parse_date(value: Any) -> date | None:

@@ -20,6 +20,23 @@ class DocumentOut(BaseModel):
         from_attributes = True
 
 
+class Citation(BaseModel):
+    document_id: uuid.UUID
+    filename: str
+    page_number: Optional[int] = None
+    snippet: str
+
+
+class AskRequest(BaseModel):
+    question: str
+    document_id: Optional[uuid.UUID] = None
+
+
+class AskResponse(BaseModel):
+    answer: str
+    citations: list[Citation]
+
+
 class DocumentExtractionOut(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID

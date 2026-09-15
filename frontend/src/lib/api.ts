@@ -73,4 +73,25 @@ export function uploadDocument(file: File): Promise<Document> {
   }).then(unwrap<Document>);
 }
 
+export interface Citation {
+  document_id: string;
+  filename: string;
+  page_number: number | null;
+  snippet: string;
+}
+
+export interface AskResponse {
+  answer: string;
+  citations: Citation[];
+}
+
+// Slice 3: RAG Q&A over embedded document chunks - see docs/ROADMAP.md Slice 3.
+export function askQuestion(question: string, documentId?: string): Promise<AskResponse> {
+  return fetch(`${API_URL}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, document_id: documentId ?? null }),
+  }).then(unwrap<AskResponse>);
+}
+
 export { ApiError };

@@ -6,7 +6,7 @@ celery_app = Celery(
     "doclarity",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.extraction"],
+    include=["app.tasks.extraction", "app.tasks.embedding"],
 )
 
 celery_app.conf.update(

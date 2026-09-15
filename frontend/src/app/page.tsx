@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { type Document, listDocuments } from "@/lib/api";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { DocumentsTable } from "@/components/DocumentsTable";
+import { AskBox } from "@/components/AskBox";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -44,6 +45,8 @@ export default function Home() {
         </div>
         <DocumentsTable documents={documents} />
       </section>
+
+      <AskBox />
     </div>
   );
 }

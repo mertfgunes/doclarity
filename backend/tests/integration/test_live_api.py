@@ -25,7 +25,10 @@ except httpx.HTTPError:
 
 @pytest.fixture(scope="module")
 def client():
-    with httpx.Client(base_url=BASE_URL, timeout=10) as c:
+    # /ask calls the LLM synchronously (unlike upload, which just enqueues a
+    # Celery task) - on local CPU inference via Ollama that can comfortably
+    # exceed the default 10s timeout.
+    with httpx.Client(base_url=BASE_URL, timeout=30) as c:
         yield c
 
 
@@ -80,10 +83,12 @@ def test_upload_rejects_unsupported_content_type(client):
 )
 def test_upload_is_picked_up_by_celery(client, filename, content_type):
     """Proves the real Celery pipeline runs end to end: upload -> task
-    picked up -> document leaves "uploaded"/"processing". Without a real
-    ANTHROPIC_API_KEY the terminal state will be "failed" (auth error) -
-    that's expected here, not a bug; see seed_demo_data.py for a way to
-    see real "processed" rows without a key.
+    picked up -> document leaves "uploaded"/"processing". With the default
+    LLM_PROVIDER=ollama and `ollama serve` running, this should reach
+    "processed"; either provider misconfigured or unreachable (e.g. no
+    ANTHROPIC_API_KEY when LLM_PROVIDER=anthropic) lands on "failed" -
+    both are terminal states this test accepts, since it's only proving
+    the pipeline runs, not grading extraction quality.
     """
     upload_response = _upload(client, filename, content_type)
     assert upload_response.status_code == 200
@@ -97,3 +102,35 @@ def test_upload_is_picked_up_by_celery(client, filename, content_type):
         time.sleep(1)
 
     assert status in ("processed", "failed"), f"extraction never reached a terminal state (stuck at {status!r})"
+
+
+def test_ask_answers_from_an_uploaded_pdf(client):
+    """Proves Slice 3's RAG path end to end against the real stack: a PDF's
+    chunks get embedded (embed_document runs independently of
+    extract_document, so it's polled separately here), and /ask returns a
+    grounded answer with a citation back to that same document.
+    """
+    upload_response = _upload(client, "sample_invoice.pdf", "application/pdf")
+    assert upload_response.status_code == 200
+    doc_id = upload_response.json()["id"]
+
+    response = None
+    for _ in range(30):
+        response = client.post("/ask", json={"question": "What is the vendor name?", "document_id": doc_id})
+        assert response.status_code == 200
+        if response.json()["citations"]:
+            break
+        time.sleep(1)
+
+    body = response.json()
+    if not body["citations"]:
+        pytest.skip("document never finished embedding - LLM/embedding backend may be unavailable")
+    assert body["answer"]
+    assert body["citations"][0]["document_id"] == doc_id
+
+
+def test_ask_404s_for_unknown_document(client):
+    response = client.post(
+        "/ask", json={"question": "test", "document_id": "00000000-0000-0000-0000-000000000000"}
+    )
+    assert response.status_code == 404

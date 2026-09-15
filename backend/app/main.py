@@ -1,11 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.core.db import Base, engine
-from app.models import document, extraction  # noqa: F401 -- import so create_all sees their tables
-from app.api import documents
+from app.models import chunk, document, extraction  # noqa: F401 -- import so create_all sees their tables
+from app.api import ask, documents
 
 # Creates tables directly for now; swap for Alembic migrations once the schema stabilizes.
+with engine.begin() as conn:
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Doclarity")
@@ -19,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(documents.router)
+app.include_router(ask.router)
 
 
 @app.get("/health")
