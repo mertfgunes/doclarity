@@ -20,7 +20,11 @@ EXPLAIN_ROW_SAMPLE = 50
 
 
 def run_analytics(question: str, llm: LLMService) -> AnalyticsAskResponse:
-    """Text-to-SQL: generate -> validate -> execute -> explain."""
+    """Text-to-SQL: generate -> validate -> execute -> explain.
+
+    Shared by the standalone /analytics/ask endpoint and /query's routed
+    "sql"/"both" paths.
+    """
     if not question.strip():
         raise HTTPException(status_code=400, detail="question must not be empty")
 

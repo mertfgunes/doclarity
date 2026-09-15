@@ -110,10 +110,48 @@ next one. Don't start Slice N+1 until Slice N works.
       likely do better here; not chased further - same category as the
       Slice 3 column-mapping quality note.
 
-## Slice 5 — Route between RAG and SQL (the differentiator)
-- [ ] Lightweight intent classifier (rule-based or LLM call) deciding:
-      RAG-only / SQL-only / both
-- [ ] Handle "why did revenue drop" style questions that need both
+## Slice 5 — Route between RAG and SQL (the differentiator)  [done]
+- [x] New `POST /query` endpoint (`app/api/query.py`) - the single entry
+      point a user actually talks to now. An LLM call (forced tool-use,
+      `classify_route`) decides `rag` / `sql` / `both`; `/ask` and
+      `/analytics/ask` still exist standalone (and still work exactly as
+      before - verified by their own passing tests) but `/query` is what
+      the frontend uses.
+- [x] `rag`/`sql` routes call the exact same `run_rag`/`run_analytics`
+      functions the standalone endpoints use (refactored out of
+      `ask.py`/`analytics.py` rather than duplicated) - so Slice 4's SQL
+      guardrails apply identically here with no separate code path to
+      re-verify.
+- [x] `both` route ("what's the total, and which vendor" / "why did X"
+      style questions): runs RAG and SQL independently, then a third LLM
+      call (`synthesize_answer`) combines both findings into one coherent
+      answer - not two answers concatenated. Either half failing aborts the
+      whole request rather than silently returning a partial answer.
+- [x] Frontend: `AskBox` now calls `/query` instead of `/ask` directly, and
+      shows which route was used (badge: "document search" / "data query" /
+      "document search + data query") plus the actual SQL when one ran -
+      keeps the "not a black box" transparency from Slice 4's `sql` field.
+      Verified visually (Playwright/Edge screenshot against the live
+      backend, console-error-free) with a `sql`-routed question showing the
+      violet badge and the query.
+- [x] Verified for real: live-tested all three routes, including the
+      target "why did revenue drop" style question ("what's the total
+      invoice amount, and which vendor is it from") which correctly routed
+      to `both` and pulled numbers from SQL + names from RAG into one
+      answer. Live integration test (`test_query_returns_a_shape_consistent_with_its_route`)
+      added - it doesn't assert a specific route (see quality note below),
+      only that the response shape matches whichever route was picked.
+- **Known quality limitation (observed, `llama3.2:3b`):** the classifier is
+      imperfect - a plain counting question ("how many documents have
+      status processed?") was twice routed to `both` (running an
+      unnecessary RAG search) instead of `sql`, and once correctly to
+      `sql`. Never wrong in a harmful way (worst case: extra latency from
+      an unneeded RAG call, or a slightly over-verbose synthesized answer),
+      just not always the most precise choice. `synthesize_answer`'s output
+      quality on `both` also degrades on many-row results (garbled a
+      multi-vendor breakdown into a confusing run-on sentence rather than
+      a clean per-vendor list) - same small-model ceiling as every other
+      quality note in this roadmap, not investigated further.
 
 ## Slice 6 — Analytics dashboard
 - [ ] Aggregation endpoints (revenue over time, customer breakdown,

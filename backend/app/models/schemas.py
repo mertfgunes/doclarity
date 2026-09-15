@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -47,6 +47,19 @@ class AnalyticsAskResponse(BaseModel):
     row_count: int
     truncated: bool
     explanation: str
+
+
+class QueryRequest(BaseModel):
+    question: str
+    document_id: Optional[uuid.UUID] = None
+
+
+class QueryResponse(BaseModel):
+    route: Literal["rag", "sql", "both"]
+    answer: str
+    citations: list[Citation] = []
+    sql: Optional[str] = None
+    rows: Optional[list[dict[str, Any]]] = None
 
 
 class DocumentExtractionOut(BaseModel):

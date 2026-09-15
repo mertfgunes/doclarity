@@ -1,11 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { type AskResponse, ApiError, askQuestion } from "@/lib/api";
+import { type QueryResponse, type QueryRoute, ApiError, askQuestion } from "@/lib/api";
 
 interface ChatTurn {
   question: string;
-  response: AskResponse;
+  response: QueryResponse;
+}
+
+const ROUTE_STYLES: Record<QueryRoute, string> = {
+  rag: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  sql: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
+  both: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300",
+};
+
+const ROUTE_LABELS: Record<QueryRoute, string> = {
+  rag: "document search",
+  sql: "data query",
+  both: "document search + data query",
+};
+
+function RouteBadge({ route }: { route: QueryRoute }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ROUTE_STYLES[route]}`}
+    >
+      {ROUTE_LABELS[route]}
+    </span>
+  );
 }
 
 export function AskBox() {
@@ -39,14 +61,23 @@ export function AskBox() {
       <div className="space-y-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800">
         {turns.length === 0 && (
           <p className="text-sm text-zinc-500">
-            Ask about a specific document (cited by page) - it searches everything you&apos;ve uploaded so far.
+            Ask about a specific document (cited by page) or about totals/counts across everything you&apos;ve
+            uploaded - it figures out which one it needs on its own.
           </p>
         )}
 
         {turns.map((turn, i) => (
           <div key={i} className="space-y-2">
-            <p className="text-sm font-medium">{turn.question}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-medium">{turn.question}</p>
+              <RouteBadge route={turn.response.route} />
+            </div>
             <p className="text-sm text-zinc-600 dark:text-zinc-400">{turn.response.answer}</p>
+            {turn.response.sql && (
+              <pre className="overflow-x-auto rounded bg-zinc-100 px-2 py-1 text-xs text-zinc-600 dark:bg-zinc-900 dark:text-zinc-400">
+                {turn.response.sql}
+              </pre>
+            )}
             {turn.response.citations.length > 0 && (
               <ul className="space-y-1">
                 {turn.response.citations.map((citation, j) => (

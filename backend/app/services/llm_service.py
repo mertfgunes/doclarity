@@ -197,6 +197,55 @@ def _explain_prompt(question: str, sql: str, rows: list[dict]) -> str:
     )
 
 
+_ROUTE_VALUES = ["rag", "sql", "both"]
+
+_ROUTE_TOOL = {
+    "name": "record_route",
+    "description": "Record which system(s) should answer the question.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "route": {
+                "type": "string",
+                "enum": _ROUTE_VALUES,
+                "description": (
+                    "'rag' for questions about the content/meaning of specific documents "
+                    "(what does the contract say, who is the vendor). 'sql' for questions "
+                    "needing aggregation/counting/math over many records (total, average, "
+                    "how many, by month/vendor/currency). 'both' only when the question "
+                    "genuinely needs a number AND an explanation grounded in document text "
+                    "(why did X happen, what's driving Y)."
+                ),
+            },
+        },
+        "required": ["route"],
+    },
+}
+
+_OLLAMA_ROUTE_SCHEMA = {
+    "type": "object",
+    "properties": {"route": {"type": "string", "enum": _ROUTE_VALUES}},
+    "required": ["route"],
+}
+
+
+def _route_prompt(question: str) -> str:
+    return f"Decide how to answer this question: {question}"
+
+
+def _synthesize_prompt(question: str, rag_answer: str, sql_explanation: str) -> str:
+    return (
+        "Answer the question by combining two findings below into one coherent "
+        "answer - a semantic-search result over document text, and a SQL query "
+        "result over structured records. Don't mention 'semantic search' or 'SQL' "
+        "or refer to them as separate sources; just answer naturally, using "
+        "whichever parts of each are relevant.\n\n"
+        f"Question: {question}\n\n"
+        f"Document search finding: {rag_answer}\n\n"
+        f"Data query finding: {sql_explanation}"
+    )
+
+
 class _AnthropicBackend:
     def __init__(self):
         self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
@@ -246,6 +295,17 @@ class _AnthropicBackend:
 
     def explain_query_results(self, question: str, sql: str, rows: list[dict]) -> str:
         return self._generate_text(_explain_prompt(question, sql, rows))
+
+    def classify_route(self, question: str) -> str:
+        message = self._create(
+            tools=[_ROUTE_TOOL],
+            tool_choice={"type": "tool", "name": "record_route"},
+            content=_route_prompt(question),
+        )
+        return self._tool_input(message, "record_route")["route"]
+
+    def synthesize_answer(self, question: str, rag_answer: str, sql_explanation: str) -> str:
+        return self._generate_text(_synthesize_prompt(question, rag_answer, sql_explanation))
 
     def _generate_text(self, prompt: str) -> str:
         try:
@@ -312,6 +372,13 @@ class _OllamaBackend:
 
     def explain_query_results(self, question: str, sql: str, rows: list[dict]) -> str:
         return self._chat_text(_explain_prompt(question, sql, rows))
+
+    def classify_route(self, question: str) -> str:
+        result = self._chat_json(_route_prompt(question), _OLLAMA_ROUTE_SCHEMA)
+        return result["route"]
+
+    def synthesize_answer(self, question: str, rag_answer: str, sql_explanation: str) -> str:
+        return self._chat_text(_synthesize_prompt(question, rag_answer, sql_explanation))
 
     def _chat_text(self, prompt: str) -> str:
         response = self._post(
@@ -403,3 +470,15 @@ class LLMService:
     def explain_query_results(self, question: str, sql: str, rows: list[dict]) -> str:
         """Turn SQL query results into a plain-language answer."""
         return self._chat_backend.explain_query_results(question, sql, rows)
+
+    def classify_route(self, question: str) -> str:
+        """Decide whether a question needs RAG, SQL, or both. Always one of
+        _ROUTE_VALUES - falls back to the safest ('both') if the model
+        returns something outside the enum despite the schema constraint.
+        """
+        route = self._chat_backend.classify_route(question)
+        return route if route in _ROUTE_VALUES else "both"
+
+    def synthesize_answer(self, question: str, rag_answer: str, sql_explanation: str) -> str:
+        """Combine a RAG answer and a SQL explanation into one coherent answer."""
+        return self._chat_backend.synthesize_answer(question, rag_answer, sql_explanation)

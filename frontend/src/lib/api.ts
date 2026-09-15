@@ -80,18 +80,25 @@ export interface Citation {
   snippet: string;
 }
 
-export interface AskResponse {
+export type QueryRoute = "rag" | "sql" | "both";
+
+export interface QueryResponse {
+  route: QueryRoute;
   answer: string;
   citations: Citation[];
+  sql: string | null;
+  rows: Record<string, unknown>[] | null;
 }
 
-// Slice 3: RAG Q&A over embedded document chunks - see docs/ROADMAP.md Slice 3.
-export function askQuestion(question: string, documentId?: string): Promise<AskResponse> {
-  return fetch(`${API_URL}/ask`, {
+// Slice 5: a single entry point that decides for itself whether a question
+// needs semantic search over document text, a SQL query over structured
+// records, or both - see docs/ROADMAP.md Slice 5.
+export function askQuestion(question: string, documentId?: string): Promise<QueryResponse> {
+  return fetch(`${API_URL}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, document_id: documentId ?? null }),
-  }).then(unwrap<AskResponse>);
+  }).then(unwrap<QueryResponse>);
 }
 
 export { ApiError };

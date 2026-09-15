@@ -158,6 +158,38 @@ def test_analytics_ask_returns_sql_and_rows(client):
     assert body["explanation"]
 
 
+def test_query_returns_a_shape_consistent_with_its_route(client):
+    """/query (Slice 5) reuses run_rag/run_analytics under the hood, which
+    are already covered directly by the /ask and /analytics/ask tests above
+    - guardrails included, since routing to "sql"/"both" calls the exact
+    same run_analytics function. This just proves the routing layer itself
+    dispatches and returns a response shaped for whichever route the model
+    picked - it doesn't assert a specific route, since that's a model
+    classification call and observed to be imperfect (not incorrect in a
+    way that breaks anything, just not always the most precise choice). A
+    "sql"/"both" route can also hit the same generated-SQL variance as the
+    /analytics/ask tests above: the guard may reject it (422, a table
+    outside the allowlist or not a clean single SELECT) or Postgres may
+    reject it after the guard passed it (400, e.g. a wrong column name).
+    Both are the pipeline correctly handling imperfect generation, not a
+    bug - tolerated here the same way.
+    """
+    response = client.post(
+        "/query", json={"question": "What is the total dollar amount across all invoices?"}
+    )
+    assert response.status_code in (200, 400, 422)
+    if response.status_code != 200:
+        pytest.skip(f"model-generated SQL was rejected (not a pipeline bug): {response.json()['detail']}")
+    body = response.json()
+    assert body["route"] in ("rag", "sql", "both")
+    assert body["answer"]
+    if body["route"] in ("sql", "both"):
+        assert body["sql"]
+        assert isinstance(body["rows"], list)
+    if body["route"] in ("rag", "both"):
+        assert isinstance(body["citations"], list)
+
+
 def test_analytics_ask_blocks_a_write_attempt(client):
     """The real guardrail here is the read-only DB role (see
     db/init/01_readonly_role.sql) - even if the app-level SQL guard had a

@@ -8,11 +8,13 @@ documents.
 
 ## Status
 
-**Slice 4 (this commit): Text-to-SQL analytics.** A new `/analytics/ask`
-endpoint turns a natural-language question into a SQL query, validates it,
-runs it against a read-only DB role, and returns the SQL + rows + a
-plain-language explanation. See "Asking questions about your data (SQL)"
-below. See `docs/ROADMAP.md` for the full slice-by-slice plan.
+**Slice 5 (this commit): Route between RAG and SQL.** A new `POST /query`
+endpoint decides for itself whether a question needs semantic search over
+document text, a SQL query over structured records, or both - and for
+"both" questions, synthesizes one coherent answer from both findings
+instead of concatenating them. This is now the main way to use the app -
+see "Asking questions (routed - the main way to use this)" below. See
+`docs/ROADMAP.md` for the full slice-by-slice plan.
 
 ## Stack
 
@@ -89,9 +91,29 @@ curl http://localhost:8000/documents
 curl http://localhost:8000/documents/{id}/extractions
 ```
 
-### Asking questions about a document (RAG)
+### Asking questions (routed - the main way to use this)
 
-Once a PDF has finished processing (chunked + embedded in the background):
+`POST /query` decides on its own whether a question needs semantic search
+over document text, a SQL query over structured records, or both:
+
+```bash
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the total invoice amount, and which vendor is it from?"}'
+```
+
+The response includes `route` (`"rag"`, `"sql"`, or `"both"`), the `answer`,
+and - depending on the route - `citations` (document/page/snippet),
+`sql`, and `rows`. Add `"document_id": "<uuid>"` to scope the RAG half to
+one document. This is what the frontend's chat box calls.
+
+### Asking questions directly (RAG or SQL only)
+
+To force one path instead of letting `/query` decide, the two underlying
+endpoints still work standalone.
+
+RAG, once a PDF has finished processing (chunked + embedded in the
+background):
 
 ```bash
 curl -X POST http://localhost:8000/ask \
@@ -99,16 +121,13 @@ curl -X POST http://localhost:8000/ask \
   -d '{"question": "What is the total amount due?"}'
 ```
 
-Add `"document_id": "<uuid>"` to scope the search to one document; omit it
-to search across everything uploaded so far. Only PDFs are chunked for RAG -
-CSV/XLSX rows go through structured extraction instead (see
-`document_extractions`), since tabular data doesn't have a natural "page" to
-cite.
+Same `document_id` scoping as `/query`; omit it to search across everything
+uploaded so far. Only PDFs are chunked for RAG - CSV/XLSX rows go through
+structured extraction instead (see `document_extractions`), since tabular
+data doesn't have a natural "page" to cite and text-to-SQL is a better fit.
 
-### Asking questions about your data (SQL)
-
-For aggregation across many documents - queries `documents`/
-`document_extractions` directly rather than searching text:
+Text-to-SQL, for aggregation across many documents - queries
+`documents`/`document_extractions` directly rather than searching text:
 
 ```bash
 curl -X POST http://localhost:8000/analytics/ask \
@@ -171,8 +190,9 @@ guardrail, row-building — no network or database needed) and
 `tests/integration/test_live_api.py`, which exercises the actual running
 stack: upload → Celery pickup → a terminal status, `/ask` returning a
 grounded answer with a citation, `/analytics/ask` returning real SQL results
-(and rejecting an attempted write), plus the list/get/404 endpoints. The
-integration tests auto-skip if nothing is listening on
+(and rejecting an attempted write), `/query` dispatching to a shape
+consistent with whichever route it picked, plus the list/get/404 endpoints.
+The integration tests auto-skip if nothing is listening on
 `http://localhost:8000`, so `pytest tests/` is safe to run whether or not
 the server is up.
 
@@ -184,9 +204,13 @@ the server is up.
 - **Celery for background processing** — large PDFs shouldn't block the
   upload request. This becomes the answer to "how does this handle a
   200-page contract?"
-- **Explicit RAG-vs-SQL routing (Slice 5)** — the differentiator vs. a
-  typical "chat with your PDF" student project. Worth being able to explain
-  in detail in an interview.
+- **Explicit RAG-vs-SQL routing (Slice 5), done** — `/query` classifies each
+  question and reuses the exact same `run_rag`/`run_analytics` functions the
+  standalone endpoints call, rather than duplicating logic per route. A
+  "both" question (numbers + explanation) runs both independently and makes
+  a third LLM call to synthesize one answer — the differentiator vs. a
+  typical "chat with your PDF" student project, and worth being able to
+  explain in detail in an interview.
 - **Two independent guardrail layers for text-to-SQL, not one** — an
   app-level `sqlglot` parse that rejects anything but a single `SELECT` over
   an explicit table allowlist, *and* a dedicated `doclarity_readonly`

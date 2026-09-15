@@ -16,7 +16,10 @@ SNIPPET_MAX_CHARS = 300
 
 
 def run_rag(question: str, document_id: uuid.UUID | None, db: Session, llm: LLMService) -> AskResponse:
-    """Semantic search over document_chunks + a grounded answer with citations."""
+    """Semantic search over document_chunks + a grounded answer with citations.
+
+    Shared by the standalone /ask endpoint and /query's routed "rag"/"both" paths.
+    """
     if not question.strip():
         raise HTTPException(status_code=400, detail="question must not be empty")
 
