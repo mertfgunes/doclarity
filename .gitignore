@@ -18,3 +18,7 @@ uploaded_files/
 # Editor / OS
 .vscode/
 .DS_Store
+
+# Local AI-assistant config (personal to whoever's developing, not the project)
+.claude/
+CLAUDE.md

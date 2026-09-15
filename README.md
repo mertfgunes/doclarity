@@ -1,27 +1,78 @@
 # Doclarity
 
-AI analytics & document intelligence platform. Upload invoices, contracts,
-and financial docs → extract structured data → ask
-questions in natural language (RAG for document Q&A, text-to-SQL for
-analytics) → get dashboards and anomaly alerts, with citations back to source
-documents.
+Doclarity turns a folder of invoices, contracts, and financial files into
+something you can actually query. Upload a PDF or spreadsheet, and it gets
+parsed, classified, and structured automatically. Then you can just ask
+questions in plain English — about one document ("what's the payment
+term on this invoice?"), about everything you've uploaded ("what's our
+total spend by vendor?"), or both at once ("why did spend spike last
+month?") — and it figures out on its own whether that needs document
+search, a database query, or a combination of the two.
 
-## Status
+## How it works
 
-**Slice 8 (this commit): Production engineering.** JWT auth + role-based
-access (`admin` can upload, `viewer` is read-only - everything else needs
-either), Alembic migrations replacing `create_all`, a small RAG eval set,
-and CI (lint + test on push). See "Auth" and "Running the tests" below.
-Deploy is intentionally not part of this slice - see `docs/ROADMAP.md`.
+1. **Upload.** A PDF, CSV, or XLSX comes in through `POST /documents/upload`
+   and is stored; the request returns immediately while two background
+   (Celery) jobs pick it up:
+   - **Extraction** parses the file (`pdfplumber` for PDFs, `pandas` for
+     spreadsheets — both deterministic, no LLM), then an LLM call classifies
+     it (`invoice` / `contract` / `unknown`) and pulls out structured fields
+     — vendor, amount, due date, line items — into Postgres. A validation
+     pass flags anything that looks off (totals that don't add up,
+     implausible dates, bad currency codes) as `needs_review` rather than
+     trusting the extraction blindly.
+   - **Embedding** (PDFs only) splits the text into overlapping ~1000-
+     character chunks, keeping the page number on each chunk, and embeds
+     them into Postgres via `pgvector` — this is what makes semantic search
+     over the document's actual wording possible later.
+2. **Ask.** `POST /query` is the single entry point for questions. An LLM
+   call classifies each question as needing:
+   - **RAG** — semantic search over embedded chunks, for questions about
+     what a specific document *says* (grounded answer + page citations —
+     the citations are exactly the retrieved chunks, so they can't be a
+     model hallucination).
+   - **SQL** — a natural-language-to-SQL pipeline for aggregation across
+     everything on file ("total invoice amount by vendor"). The generated
+     SQL is shown back to you, not hidden, and it runs through two
+     independent guardrails before touching the database (see "Why this
+     architecture" below) so it's safe to point at a live dataset.
+   - **Both** — for questions that need a number *and* an explanation (e.g.
+     "why did spend jump in March?"), it runs the RAG and SQL paths
+     independently and synthesizes one answer from both findings.
+3. **Explore.** A `/dashboard` page gives an aggregate view without asking
+   anything: totals, a currency-scoped revenue trend, a top-vendors
+   breakdown, an extraction-quality status distribution, and an anomaly
+   panel that flags invoices that deviate from that specific vendor's own
+   historical average (not a fixed threshold) — with a plain-language
+   explanation of what was flagged and why.
+4. **Access control.** Everything above sits behind JWT auth with two
+   roles: `admin` can upload documents (and do everything a `viewer` can);
+   `viewer` is read-only — ask, query, and browse the dashboard, but not
+   upload. See "Auth" below.
+
+## Features
+
+- Structured extraction from PDFs and spreadsheets, with automatic
+  document-type classification and a confidence/validation layer
+- Semantic search (RAG) over document text with page-level citations
+- Natural-language-to-SQL analytics, with the generated SQL always shown
+  and two independent layers stopping it from ever writing to the database
+- Automatic routing between document search and data queries (or both) for
+  a single question — no need to pick the right tool yourself
+- An analytics dashboard: revenue over time, vendor breakdown, extraction
+  status, and per-vendor anomaly detection with an LLM-written explanation
+- JWT auth with admin/viewer roles
+- Alembic-managed database schema, a small RAG retrieval-quality eval set,
+  and CI (lint + test) on every push
 
 ## Stack
 
 - Backend: FastAPI + SQLAlchemy + PostgreSQL (pgvector) + Celery/Redis
 - Frontend: Next.js + TypeScript + Tailwind
-- LLM: Anthropic API or a local [Ollama](https://ollama.com) model (default -
-  see "Choosing an LLM backend" below). Anthropic has no embeddings API, so
-  embeddings always go through Ollama regardless of which one is used for
-  extraction.
+- LLM: a local [Ollama](https://ollama.com) model by default (free), or the
+  Anthropic API (see "Choosing an LLM backend" below). Anthropic has no
+  embeddings API, so embeddings always go through Ollama regardless of
+  which one is used for extraction/chat.
 
 ## Local setup
 
@@ -30,7 +81,7 @@ Deploy is intentionally not part of this slice - see `docs/ROADMAP.md`.
    docker compose up -d
    ```
    On a fresh volume this also creates the `doclarity_readonly` Postgres role
-   used by Slice 4's analytics endpoint (`db/init/01_readonly_role.sql` runs
+   used by the analytics endpoint (`db/init/01_readonly_role.sql` runs
    automatically). If you already had the `postgres` container running from
    before that file existed, apply it once by hand:
    ```bash
@@ -44,7 +95,7 @@ Deploy is intentionally not part of this slice - see `docs/ROADMAP.md`.
    cp .env.example .env   # defaults to the local Ollama backend - see
                            # "Choosing an LLM backend" below for the Anthropic option
    alembic upgrade head   # creates all tables - see "Migrations" below if you
-                           # already had tables from before Slice 8
+                           # already had tables from before this
    uvicorn app.main:app --reload
    ```
 3. Celery worker (separate terminal, same venv — Windows needs the `solo`
@@ -53,18 +104,25 @@ Deploy is intentionally not part of this slice - see `docs/ROADMAP.md`.
    cd backend
    celery -A app.core.celery_app worker --loglevel=info --pool=solo
    ```
-4. Check the API's alive: `curl http://localhost:8000/health`
+4. Frontend (separate terminal):
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+5. Check the API's alive: `curl http://localhost:8000/health`, then open
+   **http://localhost:3000**.
 
 ## Migrations
 
-Schema is Alembic-owned (Slice 8) - `create_all` is gone from `app/main.py`.
+Schema is Alembic-owned - there's no `create_all`/auto-created-tables step.
 
 - **Fresh DB**: `alembic upgrade head` creates everything (`documents`,
   `document_extractions`, `document_chunks`, `users`).
 - **A DB that already has the first three tables** (i.e. you were running
-  this before Slice 8): `alembic stamp 0001` marks that baseline as already
-  applied without re-running its DDL, then `alembic upgrade head` actually
-  creates the new `users` table.
+  an older version of this without Alembic): `alembic stamp 0001` marks
+  that baseline as already applied without re-running its DDL, then
+  `alembic upgrade head` actually creates the new `users` table.
 
 ## Auth
 
@@ -97,8 +155,8 @@ token in `localStorage` and attach it to every API call automatically.
 
 ## Choosing an LLM backend
 
-`LLM_PROVIDER` in `.env` picks what extraction/column-mapping calls run
-against; `EMBEDDING_PROVIDER` (Slice 3) is separate because Anthropic has no
+`LLM_PROVIDER` in `.env` picks what extraction/column-mapping/chat calls
+run against; `EMBEDDING_PROVIDER` is separate because Anthropic has no
 embeddings endpoint at all.
 
 - **`ollama` (default)** - free, runs locally, no API key needed. Install
@@ -106,7 +164,7 @@ embeddings endpoint at all.
   the two models this project uses:
   ```bash
   ollama pull llama3.2:3b       # chat/extraction, tool-schema-capable
-  ollama pull nomic-embed-text  # embeddings (Slice 3)
+  ollama pull nomic-embed-text  # embeddings
   ```
   `OLLAMA_BASE_URL`/`OLLAMA_CHAT_MODEL`/`OLLAMA_EMBED_MODEL` in `.env` let you
   point at different models or a remote Ollama instance.
@@ -131,6 +189,12 @@ curl -F "file=@samples/sample_invoice.pdf" -H "Authorization: Bearer $TOKEN" htt
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/documents
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/documents/{id}/extractions
 ```
+
+Upload enqueues a Celery task immediately; poll `GET /documents/{id}` until
+`status` moves off `"uploaded"`/`"processing"` to `"processed"` or `"failed"`,
+then check `GET /documents/{id}/extractions` for the structured rows. A row's
+own `status` is `"completed"`, `"needs_review"` (validation flagged
+something — see `confidence_flags`), or `"failed"`.
 
 ### Asking questions (routed - the main way to use this)
 
@@ -179,16 +243,10 @@ curl -X POST http://localhost:8000/analytics/ask \
 The response includes the generated `sql` (so you can see exactly what ran,
 not just trust a black box), the result `rows`, and a plain-language
 `explanation`. Only `SELECT` statements over `documents`/`document_extractions`
-are allowed - see the guardrails note further down. A query that fails
-that check comes back as `422` with the reason; a query that's valid SQL but
-fails to execute (e.g. references a column that doesn't exist) comes back as
-`400`.
-
-Upload enqueues a Celery task immediately; poll `GET /documents/{id}` until
-`status` moves off `"uploaded"`/`"processing"` to `"processed"` or `"failed"`,
-then check `GET /documents/{id}/extractions` for the structured rows. A row's
-own `status` is `"completed"`, `"needs_review"` (validation flagged
-something — see `confidence_flags`), or `"failed"`.
+are allowed - see "Why this architecture" below. A query that fails that
+check comes back as `422` with the reason; a query that's valid SQL but
+fails to execute (e.g. references a column that doesn't exist) comes back
+as `400`.
 
 ### Using the dashboard
 
@@ -196,17 +254,18 @@ Open **http://localhost:3000/dashboard** (linked from the main page via
 "Dashboard →") for an aggregate view across everything uploaded: document/
 extraction counts, a needs-review count, an extraction status breakdown,
 and - scoped to one currency at a time via the filter control - revenue
-over time and a top-vendors-by-amount breakdown. The currency scoping is
-deliberate: summing amounts across currencies on one shared axis would
-imply a conversion rate this app doesn't have, so revenue/vendor data is
-filtered rather than combined.
+over time, a top-vendors-by-amount breakdown, and per-vendor anomaly
+flags. The currency scoping is deliberate: summing amounts across
+currencies on one shared axis would imply a conversion rate this app
+doesn't have, so revenue/vendor/anomaly data is filtered rather than
+combined.
 
 The underlying endpoints (`GET /analytics/dashboard/summary`,
 `/currencies`, `/revenue-over-time?currency=EUR`,
-`/vendor-breakdown?currency=EUR`, `/status-distribution`) are fixed,
-app-authored SQL, unrelated to the text-to-SQL guardrails described below -
-those only apply to the LLM-generated free-form queries from
-`/analytics/ask`.
+`/vendor-breakdown?currency=EUR`, `/status-distribution`,
+`/analytics/anomalies?currency=EUR`) are fixed, app-authored SQL, unrelated
+to the text-to-SQL guardrails described above - those only apply to the
+LLM-generated free-form queries from `/analytics/ask`.
 
 ### Sample files
 
@@ -264,18 +323,17 @@ without a live server.
 ## Why this architecture
 
 - **pgvector instead of a dedicated vector DB** — one less service to run,
-  and it's genuinely fine at portfolio-project scale. Worth mentioning in
-  interviews as a deliberate simplicity trade-off, not an oversight.
+  and it's genuinely fine at portfolio-project scale. A deliberate
+  simplicity trade-off, not an oversight.
 - **Celery for background processing** — large PDFs shouldn't block the
   upload request. This becomes the answer to "how does this handle a
   200-page contract?"
-- **Explicit RAG-vs-SQL routing (Slice 5), done** — `/query` classifies each
-  question and reuses the exact same `run_rag`/`run_analytics` functions the
-  standalone endpoints call, rather than duplicating logic per route. A
-  "both" question (numbers + explanation) runs both independently and makes
-  a third LLM call to synthesize one answer — the differentiator vs. a
-  typical "chat with your PDF" student project, and worth being able to
-  explain in detail in an interview.
+- **Explicit RAG-vs-SQL routing** — `/query` classifies each question and
+  reuses the exact same `run_rag`/`run_analytics` functions the standalone
+  endpoints call, rather than duplicating logic per route. A "both"
+  question (numbers + explanation) runs both independently and makes a
+  third LLM call to synthesize one answer, rather than concatenating two
+  disjoint answers.
 - **Two independent guardrail layers for text-to-SQL, not one** — an
   app-level `sqlglot` parse that rejects anything but a single `SELECT` over
   an explicit table allowlist, *and* a dedicated `doclarity_readonly`
