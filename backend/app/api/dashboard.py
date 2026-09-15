@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.models.document import Document
 from app.models.extraction import DocumentExtraction, DocumentType, ExtractionStatus
@@ -15,7 +16,7 @@ from app.models.schemas import (
     VendorBreakdownRow,
 )
 
-router = APIRouter(prefix="/analytics/dashboard", tags=["dashboard"])
+router = APIRouter(prefix="/analytics/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
 
 # Fixed, app-authored queries for known dashboard widgets - not LLM-generated,
 # so these run against the normal engine/session, not the sql_guard/

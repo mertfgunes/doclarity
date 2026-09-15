@@ -23,6 +23,7 @@ import { VendorBarChart } from "@/components/dashboard/VendorBarChart";
 import { StatusDistributionBar } from "@/components/dashboard/StatusDistributionBar";
 import { AnomalyList } from "@/components/dashboard/AnomalyList";
 import { EmptyState } from "@/components/dashboard/EmptyState";
+import { AccountBadge } from "@/components/AccountBadge";
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -87,9 +88,12 @@ export default function DashboardPage() {
             Aggregate view across everything uploaded so far.
           </p>
         </div>
-        <Link href="/" className="text-sm text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
-          ← Back to documents
-        </Link>
+        <div className="flex items-center gap-4">
+          <AccountBadge />
+          <Link href="/" className="text-sm text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
+            ← Back to documents
+          </Link>
+        </div>
       </header>
 
       {loadError && <p className="text-sm text-red-600">Can&apos;t reach the API.</p>}

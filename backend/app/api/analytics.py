@@ -1,9 +1,10 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.core.auth import get_current_user
 from app.core.db import analytics_engine
 from app.models.schemas import AnalyticsAskRequest, AnalyticsAskResponse
 from app.services.analytics_schema import SCHEMA_DESCRIPTION
@@ -12,7 +13,7 @@ from app.services.sql_guard import SQLGuardError, validate_select_only
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/analytics", tags=["analytics"])
+router = APIRouter(prefix="/analytics", tags=["analytics"], dependencies=[Depends(get_current_user)])
 
 MAX_RESULT_ROWS = 500
 # Keep the explanation prompt small regardless of how many rows came back.

@@ -5,6 +5,7 @@ from typing import List
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user, require_admin
 from app.core.config import settings
 from app.core.db import get_db
 from app.models.document import Document, ProcessingStatus
@@ -24,7 +25,7 @@ ALLOWED_CONTENT_TYPES = {
 }
 
 
-@router.post("/upload", response_model=DocumentOut)
+@router.post("/upload", response_model=DocumentOut, dependencies=[Depends(require_admin)])
 async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
@@ -57,12 +58,12 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
 
 
 @router.get("", response_model=List[DocumentOut])
-def list_documents(db: Session = Depends(get_db)):
+def list_documents(db: Session = Depends(get_db), _user=Depends(get_current_user)):
     return db.query(Document).order_by(Document.uploaded_at.desc()).all()
 
 
 @router.get("/{document_id}", response_model=DocumentOut)
-def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_document(document_id: uuid.UUID, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -70,7 +71,7 @@ def get_document(document_id: uuid.UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/{document_id}/extractions", response_model=List[DocumentExtractionOut])
-def get_document_extractions(document_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_document_extractions(document_id: uuid.UUID, db: Session = Depends(get_db), _user=Depends(get_current_user)):
     doc = db.query(Document).filter(Document.id == document_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")

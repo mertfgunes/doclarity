@@ -241,13 +241,81 @@ next one. Don't start Slice N+1 until Slice N works.
          this slice, worth revisiting if vendor sample sizes stay this
          small in practice.
 
-## Slice 8 — Production engineering
-- [ ] Auth (JWT), role-based access
-- [ ] Alembic migrations replacing `create_all`
-- [ ] Unit + integration tests, a small RAG eval set (does retrieval surface
-      the right chunk for known questions?)
-- [ ] CI (GitHub Actions): lint + test on push
-- [ ] Deploy: frontend → Vercel, backend → a cloud host, Postgres → managed
+## Slice 8 — Production engineering  [done except deploy]
+- [x] JWT auth + role-based access: two roles, `admin` (can upload +
+      everything a viewer can) and `viewer` (read-only - query/ask/
+      dashboard, not upload). `POST /auth/register` always creates a
+      viewer - it can never mint an admin; the only way to get one is
+      `scripts/create_admin.py` (direct DB write, mirrors
+      `scripts/seed_demo_data.py`'s convention), so there's no public
+      "become admin" surface. `POST /auth/login` (`OAuth2PasswordRequestForm`,
+      so Swagger's "Authorize" button works out of the box) returns a JWT
+      (`pyjwt`, `HS256`); passwords hashed with `bcrypt` directly (no
+      passlib, to sidestep its bcrypt-version compatibility issues).
+      `/documents/upload` requires admin; every other route requires a
+      valid token (`Depends(get_current_user)`, router-level where a whole
+      router is one tier, per-route on `documents.py` since it mixes
+      tiers); `/health` and `/auth/*` stay open.
+- [x] Alembic migrations replacing `create_all`: two migrations -
+      `0001_initial_schema` (the three tables that already existed via
+      `create_all` - `documents`, `document_extractions`,
+      `document_chunks`) and `0002_add_users` (the new `users` table).
+      Split this way specifically so an **existing** dev DB (which already
+      had the first three tables) could `alembic stamp 0001` (mark it
+      applied without re-running its DDL) then `alembic upgrade head` to
+      actually create `users` for real - verified directly against this
+      project's own dev DB, not just a fresh one. `app/main.py` no longer
+      calls `create_all`/`CREATE EXTENSION` at all - schema is now
+      migration-owned.
+- [x] Tests: `tests/test_auth_service.py` (password hash/verify round-trip,
+      JWT create/decode round-trip, tampered/wrong-secret/expired token
+      rejection - pure functions, no DB/network). `tests/integration/
+      conftest.py` seeds known admin/viewer users directly via the DB
+      session (bcrypt-hashed, no insecure "make me admin" API) then logs
+      in through the real `/auth/login` to get a real token - every
+      existing live test updated to send it, plus new tests for register→
+      login, missing/invalid token → 401, viewer→upload → 403, admin→
+      upload → 200.
+- [x] Small RAG eval set (`tests/integration/test_rag_eval.py`): four known
+      questions against `samples/sample_invoice.pdf` and
+      `samples/sample_contract.pdf`, asserting `/ask`'s citations name the
+      right source file - since citations are exactly the retrieved
+      chunks (Slice 3), this checks retrieval quality directly rather than
+      grading the LLM's phrasing.
+- [x] CI (`.github/workflows/ci.yml`), two jobs: backend (`ruff check .` +
+      `pytest tests/ -v`) and frontend (`npm run lint`). No service
+      containers - the integration tests already auto-skip with no live
+      server reachable, so plain `pytest` in CI exercises only the unit
+      tests, by design, matching how these tests were written from Slice 2
+      onward. `ruff.toml` scoped to `E`/`F` only (not import-sorting) so
+      introducing a linter for the first time doesn't reformat every
+      pre-existing file's imports.
+- [x] Frontend: minimal `/login` and `/register` pages, a `lib/auth.ts`
+      (localStorage token, role decoded client-side from the JWT payload -
+      not sensitive, no library needed), every `lib/api.ts` call now sends
+      `Authorization: Bearer <token>` and redirects to `/login` on a 401
+      (no refresh-token flow - simplest correct behavior). `AccountBadge`
+      component (shared by `/` and `/dashboard`) shows "logged in as
+      {role} · Log out" and redirects to `/login` if there's no token. The
+      upload dropzone itself isn't hidden for viewers - a 403 surfaces as
+      a normal error message; RBAC is enforced server-side, which is what
+      actually matters.
+- [x] Verified for real against this project's own live stack (not a fresh
+      one): ran the actual migrations (`stamp 0001` + `upgrade head`)
+      against the dev DB, restarted the API with the new code, then ran
+      the full test suite - **69/69 passing**, including every new auth
+      test and all four RAG eval cases. `ruff check .` and the frontend's
+      `eslint`/`tsc --noEmit` all clean. Confirmed `/openapi.json` still
+      generates validly with all 16 routes. Browser-based screenshot
+      verification (the Playwright/Edge pattern used in Slices 3/6/7)
+      wasn't available in this session - verified the frontend pages
+      render (200, no server error) and covered the actual auth logic via
+      the backend test suite instead.
+- [ ] **Deploy** (frontend → Vercel, backend → a cloud host, Postgres →
+      managed) deliberately not done in this slice - it needs real
+      external accounts/credentials that are the user's to set up, not
+      something to do unattended. Left for the user, with everything else
+      in this slice (migrations, auth, CI) now in place as prerequisites.
 
 ## Slice 9 — Ship it
 - [ ] Record a 2–3 min demo video

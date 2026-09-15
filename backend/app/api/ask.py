@@ -3,13 +3,14 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.models.chunk import DocumentChunk
 from app.models.document import Document
 from app.models.schemas import AskRequest, AskResponse, Citation
 from app.services.llm_service import LLMService, LLMTransientError
 
-router = APIRouter(tags=["ask"])
+router = APIRouter(tags=["ask"], dependencies=[Depends(get_current_user)])
 
 TOP_K = 5
 SNIPPET_MAX_CHARS = 300

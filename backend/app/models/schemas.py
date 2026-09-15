@@ -3,10 +3,31 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.document import ProcessingStatus
 from app.models.extraction import DocumentType, ExtractionStatus
+from app.models.user import UserRole
+
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str = Field(min_length=8)
+
+
+class UserOut(BaseModel):
+    id: uuid.UUID
+    email: str
+    role: UserRole
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 
 class DocumentOut(BaseModel):

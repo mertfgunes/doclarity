@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     ollama_chat_model: str = "llama3.2:3b"
     ollama_embed_model: str = "nomic-embed-text"
 
+    # Auth (Slice 8). Change jwt_secret_key for any real deployment - this
+    # default is only safe for local dev.
+    jwt_secret_key: str = "dev-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24
+
     # Storage (local for dev; swap for S3 in production phase)
     upload_dir: str = "./uploaded_files"
 

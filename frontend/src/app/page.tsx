@@ -6,6 +6,7 @@ import { type Document, listDocuments } from "@/lib/api";
 import { UploadDropzone } from "@/components/UploadDropzone";
 import { DocumentsTable } from "@/components/DocumentsTable";
 import { AskBox } from "@/components/AskBox";
+import { AccountBadge } from "@/components/AccountBadge";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -37,9 +38,12 @@ export default function Home() {
             Upload an invoice, contract, or transaction file to see it parsed and structured.
           </p>
         </div>
-        <Link href="/dashboard" className="text-sm text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
-          Dashboard →
-        </Link>
+        <div className="flex items-center gap-4">
+          <AccountBadge />
+          <Link href="/dashboard" className="text-sm text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
+            Dashboard →
+          </Link>
+        </div>
       </header>
 
       <UploadDropzone onUploaded={refresh} />

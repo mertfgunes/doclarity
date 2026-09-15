@@ -1,3 +1,5 @@
+import { clearToken, getToken } from "@/lib/auth";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export type ProcessingStatus = "uploaded" | "processing" | "processed" | "failed";
@@ -48,7 +50,22 @@ class ApiError extends Error {
   }
 }
 
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// Used for every protected route. A 401 means the token is missing/expired/
+// invalid - there's no refresh flow, so the simplest correct behavior is to
+// drop it and send the user back to log in.
 async function unwrap<T>(response: Response): Promise<T> {
+  if (response.status === 401) {
+    clearToken();
+    // A plain module has no router context, and a full reload is actually
+    // desirable here anyway (no refresh-token flow - drop all client state).
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    if (typeof window !== "undefined") window.location.href = "/login";
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
     throw new ApiError(body?.detail ?? response.statusText, response.status);
@@ -56,12 +73,54 @@ async function unwrap<T>(response: Response): Promise<T> {
   return response.json();
 }
 
+// Used only for /auth/login and /auth/register - a 401/400 there is a normal
+// "wrong password" / "email taken" result to show on the form, not a reason
+// to redirect away from the page the user is already on.
+async function unwrapAuth<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(body?.detail ?? response.statusText, response.status);
+  }
+  return response.json();
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: "admin" | "viewer";
+  created_at: string;
+}
+
+export interface Token {
+  access_token: string;
+  token_type: string;
+}
+
+export function registerUser(email: string, password: string): Promise<AuthUser> {
+  return fetch(`${API_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  }).then(unwrapAuth<AuthUser>);
+}
+
+export function loginUser(email: string, password: string): Promise<Token> {
+  const body = new URLSearchParams({ username: email, password });
+  return fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  }).then(unwrapAuth<Token>);
+}
+
 export function listDocuments(): Promise<Document[]> {
-  return fetch(`${API_URL}/documents`).then(unwrap<Document[]>);
+  return fetch(`${API_URL}/documents`, { headers: authHeaders() }).then(unwrap<Document[]>);
 }
 
 export function getDocumentExtractions(documentId: string): Promise<DocumentExtraction[]> {
-  return fetch(`${API_URL}/documents/${documentId}/extractions`).then(unwrap<DocumentExtraction[]>);
+  return fetch(`${API_URL}/documents/${documentId}/extractions`, { headers: authHeaders() }).then(
+    unwrap<DocumentExtraction[]>,
+  );
 }
 
 export function uploadDocument(file: File): Promise<Document> {
@@ -69,6 +128,7 @@ export function uploadDocument(file: File): Promise<Document> {
   formData.append("file", file);
   return fetch(`${API_URL}/documents/upload`, {
     method: "POST",
+    headers: authHeaders(),
     body: formData,
   }).then(unwrap<Document>);
 }
@@ -96,7 +156,7 @@ export interface QueryResponse {
 export function askQuestion(question: string, documentId?: string): Promise<QueryResponse> {
   return fetch(`${API_URL}/query`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ question, document_id: documentId ?? null }),
   }).then(unwrap<QueryResponse>);
 }
@@ -130,25 +190,33 @@ export interface StatusDistributionRow {
 }
 
 export function getDashboardSummary(): Promise<DashboardSummary> {
-  return fetch(`${API_URL}/analytics/dashboard/summary`).then(unwrap<DashboardSummary>);
+  return fetch(`${API_URL}/analytics/dashboard/summary`, { headers: authHeaders() }).then(unwrap<DashboardSummary>);
 }
 
 export function getDashboardCurrencies(): Promise<CurrencyOption[]> {
-  return fetch(`${API_URL}/analytics/dashboard/currencies`).then(unwrap<CurrencyOption[]>);
+  return fetch(`${API_URL}/analytics/dashboard/currencies`, { headers: authHeaders() }).then(
+    unwrap<CurrencyOption[]>,
+  );
 }
 
 export function getRevenueOverTime(currency: string, interval: "day" | "week" | "month" = "month"): Promise<RevenuePoint[]> {
   const params = new URLSearchParams({ currency, interval });
-  return fetch(`${API_URL}/analytics/dashboard/revenue-over-time?${params}`).then(unwrap<RevenuePoint[]>);
+  return fetch(`${API_URL}/analytics/dashboard/revenue-over-time?${params}`, { headers: authHeaders() }).then(
+    unwrap<RevenuePoint[]>,
+  );
 }
 
 export function getVendorBreakdown(currency: string, limit = 10): Promise<VendorBreakdownRow[]> {
   const params = new URLSearchParams({ currency, limit: String(limit) });
-  return fetch(`${API_URL}/analytics/dashboard/vendor-breakdown?${params}`).then(unwrap<VendorBreakdownRow[]>);
+  return fetch(`${API_URL}/analytics/dashboard/vendor-breakdown?${params}`, { headers: authHeaders() }).then(
+    unwrap<VendorBreakdownRow[]>,
+  );
 }
 
 export function getStatusDistribution(): Promise<StatusDistributionRow[]> {
-  return fetch(`${API_URL}/analytics/dashboard/status-distribution`).then(unwrap<StatusDistributionRow[]>);
+  return fetch(`${API_URL}/analytics/dashboard/status-distribution`, { headers: authHeaders() }).then(
+    unwrap<StatusDistributionRow[]>,
+  );
 }
 
 export interface AnomalyRow {
@@ -176,7 +244,7 @@ export interface AnomalyResponse {
 // see docs/ROADMAP.md Slice 7.
 export function getAnomalies(currency: string): Promise<AnomalyResponse> {
   const params = new URLSearchParams({ currency });
-  return fetch(`${API_URL}/analytics/anomalies?${params}`).then(unwrap<AnomalyResponse>);
+  return fetch(`${API_URL}/analytics/anomalies?${params}`, { headers: authHeaders() }).then(unwrap<AnomalyResponse>);
 }
 
 export { ApiError };

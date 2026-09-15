@@ -5,13 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.api.analytics import run_analytics
 from app.api.ask import run_rag
+from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.models.schemas import QueryRequest, QueryResponse
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["query"])
+router = APIRouter(tags=["query"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("/query", response_model=QueryResponse)

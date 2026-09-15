@@ -1,0 +1,9 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+# Just E/F (pyflakes + pycodestyle) for now - no "I" (import-sort), since
+# turning that on would reformat imports across the whole existing
+# codebase rather than just Slice 8's new files.
+select = ["E", "F"]
+ignore = ["E501"]

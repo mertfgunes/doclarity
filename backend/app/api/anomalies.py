@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.models.extraction import DocumentExtraction, DocumentType, ExtractionStatus
 from app.models.schemas import AnomalyResponse, AnomalyRow
@@ -12,7 +13,7 @@ from app.services.llm_service import LLMService, LLMTransientError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/analytics", tags=["anomalies"])
+router = APIRouter(prefix="/analytics", tags=["anomalies"], dependencies=[Depends(get_current_user)])
 
 # Same fixed-query rationale as app/api/dashboard.py: this is an app-authored
 # stats query, not LLM-generated SQL, so it runs on the normal engine/session

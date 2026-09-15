@@ -8,14 +8,11 @@ documents.
 
 ## Status
 
-**Slice 6 (this commit): Analytics dashboard.** A new `/dashboard` page
-gives an aggregate view across everything uploaded - document/extraction
-counts, a needs-review count, an extraction status breakdown, and (scoped
-to one currency at a time) revenue over time and a top-vendors breakdown.
-These are fixed, app-authored queries, not LLM-generated - Slice 4's
-text-to-SQL guardrails don't apply here because there's no free-form SQL
-to guard. See "Using the dashboard" below. See `docs/ROADMAP.md` for the
-full slice-by-slice plan.
+**Slice 8 (this commit): Production engineering.** JWT auth + role-based
+access (`admin` can upload, `viewer` is read-only - everything else needs
+either), Alembic migrations replacing `create_all`, a small RAG eval set,
+and CI (lint + test on push). See "Auth" and "Running the tests" below.
+Deploy is intentionally not part of this slice - see `docs/ROADMAP.md`.
 
 ## Stack
 
@@ -46,10 +43,10 @@ full slice-by-slice plan.
    pip install -r requirements.txt
    cp .env.example .env   # defaults to the local Ollama backend - see
                            # "Choosing an LLM backend" below for the Anthropic option
+   alembic upgrade head   # creates all tables - see "Migrations" below if you
+                           # already had tables from before Slice 8
    uvicorn app.main:app --reload
    ```
-   The app creates its tables on startup (`documents`, `document_extractions`)
-   — no separate migration step yet.
 3. Celery worker (separate terminal, same venv — Windows needs the `solo`
    pool since the default `prefork` pool doesn't work there):
    ```bash
@@ -57,6 +54,46 @@ full slice-by-slice plan.
    celery -A app.core.celery_app worker --loglevel=info --pool=solo
    ```
 4. Check the API's alive: `curl http://localhost:8000/health`
+
+## Migrations
+
+Schema is Alembic-owned (Slice 8) - `create_all` is gone from `app/main.py`.
+
+- **Fresh DB**: `alembic upgrade head` creates everything (`documents`,
+  `document_extractions`, `document_chunks`, `users`).
+- **A DB that already has the first three tables** (i.e. you were running
+  this before Slice 8): `alembic stamp 0001` marks that baseline as already
+  applied without re-running its DDL, then `alembic upgrade head` actually
+  creates the new `users` table.
+
+## Auth
+
+Every route except `/health`, `/auth/register`, and `/auth/login` requires
+a JWT. Two roles: `admin` (can upload documents, plus everything a viewer
+can) and `viewer` (read-only - ask/query/dashboard, not upload).
+
+```bash
+curl -X POST http://localhost:8000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "a-real-password"}'
+# always creates a viewer - registration can never mint an admin
+
+curl -X POST http://localhost:8000/auth/login \
+  -d "username=you@example.com&password=a-real-password"
+# -> {"access_token": "...", "token_type": "bearer"}
+```
+
+Send the token back as `Authorization: Bearer <access_token>` on every
+other request. The Swagger UI at `/docs` has an "Authorize" button that
+does this for you after you log in there.
+
+**Getting an admin account**: there's no public "become admin" endpoint by
+design - run `python scripts/create_admin.py <email> <password>` (from
+`backend/`, same convention as `scripts/seed_demo_data.py`) to create or
+promote one directly against the DB.
+
+The frontend has minimal `/login` and `/register` pages that store the
+token in `localStorage` and attach it to every API call automatically.
 
 ## Choosing an LLM backend
 
@@ -81,15 +118,18 @@ embeddings endpoint at all.
 ## Using it
 
 The easiest way to click through the API is the interactive docs FastAPI
-generates automatically: **http://localhost:8000/docs**. Every endpoint can
-be run from there with a "Try it out" button — no curl needed.
+generates automatically: **http://localhost:8000/docs** - log in there via
+"Authorize" (see "Auth" above) and every endpoint can be run with a "Try it
+out" button, no curl needed. The examples below assume `$TOKEN` holds an
+admin token (`curl`'s `-H "Authorization: Bearer $TOKEN"`), since uploading
+needs one; a viewer token works for everything except upload.
 
 ### Uploading a document
 
 ```bash
-curl -F "file=@samples/sample_invoice.pdf" http://localhost:8000/documents/upload
-curl http://localhost:8000/documents
-curl http://localhost:8000/documents/{id}/extractions
+curl -F "file=@samples/sample_invoice.pdf" -H "Authorization: Bearer $TOKEN" http://localhost:8000/documents/upload
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/documents
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/documents/{id}/extractions
 ```
 
 ### Asking questions (routed - the main way to use this)
@@ -99,7 +139,7 @@ over document text, a SQL query over structured records, or both:
 
 ```bash
 curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
   -d '{"question": "What is the total invoice amount, and which vendor is it from?"}'
 ```
 
@@ -118,7 +158,7 @@ background):
 
 ```bash
 curl -X POST http://localhost:8000/ask \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
   -d '{"question": "What is the total amount due?"}'
 ```
 
@@ -132,7 +172,7 @@ Text-to-SQL, for aggregation across many documents - queries
 
 ```bash
 curl -X POST http://localhost:8000/analytics/ask \
-  -H "Content-Type: application/json" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
   -d '{"question": "What is the total invoice amount by currency, for completed extractions only?"}'
 ```
 
@@ -205,15 +245,21 @@ pytest tests/ -v
 ```
 
 This runs both the unit tests (parsers, validation, chunking, the SQL
-guardrail, row-building — no network or database needed) and
-`tests/integration/test_live_api.py`, which exercises the actual running
-stack: upload → Celery pickup → a terminal status, `/ask` returning a
-grounded answer with a citation, `/analytics/ask` returning real SQL results
-(and rejecting an attempted write), `/query` dispatching to a shape
-consistent with whichever route it picked, plus the list/get/404 endpoints.
-The integration tests auto-skip if nothing is listening on
-`http://localhost:8000`, so `pytest tests/` is safe to run whether or not
-the server is up.
+guardrail, auth hashing/JWT, row-building — no network or database needed)
+and the live integration tests: `test_live_api.py` (upload → Celery pickup
+→ a terminal status, `/ask` returning a grounded answer with a citation,
+`/analytics/ask` returning real SQL results and rejecting an attempted
+write, `/query` dispatching to a shape consistent with whichever route it
+picked, auth - register/login/401/403 - plus the list/get/404 endpoints)
+and `test_rag_eval.py` (a small eval set - does `/ask` cite the right
+source document for a handful of known questions?). Both auto-skip if
+nothing is listening on `http://localhost:8000`, so `pytest tests/` is safe
+to run whether or not the server is up.
+
+CI (`.github/workflows/ci.yml`) runs `ruff check .` + `pytest tests/ -v` on
+the backend and `npm run lint` on the frontend, on every push - no service
+containers needed, since the integration tests above already auto-skip
+without a live server.
 
 ## Why this architecture
 
@@ -237,3 +283,9 @@ the server is up.
   it. The interesting failure mode for LLM-generated SQL isn't "the query is
   slightly wrong" — it's "the query does something you didn't ask for", so
   the second layer exists specifically to survive the first one having a bug.
+- **Registration can never mint an admin** — `POST /auth/register` always
+  creates a viewer; the only way to get an admin account is
+  `scripts/create_admin.py`, a direct DB write with no HTTP surface at all.
+  A "give yourself any role you like" field on a public endpoint is exactly
+  the kind of privilege-escalation bug worth designing out rather than
+  trusting validation to catch.
