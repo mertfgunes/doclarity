@@ -204,3 +204,67 @@ def test_analytics_ask_blocks_a_write_attempt(client):
     assert response.status_code in (200, 422)
     if response.status_code == 200:
         assert "DELETE" not in response.json()["sql"].upper()
+
+
+def test_dashboard_summary_returns_counts(client):
+    response = client.get("/analytics/dashboard/summary")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total_documents"] >= 0
+    assert body["total_extractions"] >= 0
+    assert body["needs_review_count"] >= 0
+
+
+def test_dashboard_currencies_lists_known_currencies(client):
+    response = client.get("/analytics/dashboard/currencies")
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body, list)
+    if body:
+        assert set(body[0].keys()) == {"currency", "invoice_count"}
+
+
+def test_dashboard_revenue_over_time_requires_currency(client):
+    response = client.get("/analytics/dashboard/revenue-over-time")
+    assert response.status_code == 422
+
+
+def test_dashboard_revenue_over_time_returns_points_for_a_known_currency(client):
+    currencies = client.get("/analytics/dashboard/currencies").json()
+    if not currencies:
+        pytest.skip("no completed invoice data with a currency yet")
+    currency = currencies[0]["currency"]
+
+    response = client.get(f"/analytics/dashboard/revenue-over-time?currency={currency}")
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body, list)
+    if body:
+        assert set(body[0].keys()) == {"period", "total_amount", "invoice_count"}
+
+
+def test_dashboard_vendor_breakdown_returns_rows_for_a_known_currency(client):
+    currencies = client.get("/analytics/dashboard/currencies").json()
+    if not currencies:
+        pytest.skip("no completed invoice data with a currency yet")
+    currency = currencies[0]["currency"]
+
+    response = client.get(f"/analytics/dashboard/vendor-breakdown?currency={currency}")
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body, list)
+    if body:
+        assert set(body[0].keys()) == {"vendor_name", "total_amount", "invoice_count"}
+
+
+def test_dashboard_status_distribution_agrees_with_summary(client):
+    """Cross-endpoint invariant: the status breakdown and the summary count
+    are computed by two separate queries - they'd better agree.
+    """
+    dist_response = client.get("/analytics/dashboard/status-distribution")
+    summary_response = client.get("/analytics/dashboard/summary")
+    assert dist_response.status_code == 200
+    assert summary_response.status_code == 200
+
+    total_from_distribution = sum(row["count"] for row in dist_response.json())
+    assert total_from_distribution == summary_response.json()["total_extractions"]

@@ -4,7 +4,7 @@ from sqlalchemy import text
 
 from app.core.db import Base, engine
 from app.models import chunk, document, extraction  # noqa: F401 -- import so create_all sees their tables
-from app.api import analytics, ask, documents, query
+from app.api import analytics, ask, dashboard, documents, query
 
 # Creates tables directly for now; swap for Alembic migrations once the schema stabilizes.
 with engine.begin() as conn:
@@ -25,6 +25,7 @@ app.include_router(documents.router)
 app.include_router(ask.router)
 app.include_router(analytics.router)
 app.include_router(query.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/health")

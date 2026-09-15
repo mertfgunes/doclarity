@@ -62,6 +62,34 @@ class QueryResponse(BaseModel):
     rows: Optional[list[dict[str, Any]]] = None
 
 
+class CurrencyOption(BaseModel):
+    currency: str
+    invoice_count: int
+
+
+class RevenuePoint(BaseModel):
+    period: date
+    total_amount: Decimal
+    invoice_count: int
+
+
+class VendorBreakdownRow(BaseModel):
+    vendor_name: str
+    total_amount: Decimal
+    invoice_count: int
+
+
+class StatusDistributionRow(BaseModel):
+    status: ExtractionStatus
+    count: int
+
+
+class DashboardSummary(BaseModel):
+    total_documents: int
+    total_extractions: int
+    needs_review_count: int
+
+
 class DocumentExtractionOut(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID

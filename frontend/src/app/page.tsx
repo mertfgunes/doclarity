@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { type Document, listDocuments } from "@/lib/api";
 import { UploadDropzone } from "@/components/UploadDropzone";
@@ -29,11 +30,16 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-8 px-6 py-12">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Doclarity</h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Upload an invoice, contract, or transaction file to see it parsed and structured.
-        </p>
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Doclarity</h1>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+            Upload an invoice, contract, or transaction file to see it parsed and structured.
+          </p>
+        </div>
+        <Link href="/dashboard" className="text-sm text-zinc-500 underline hover:text-zinc-700 dark:hover:text-zinc-300">
+          Dashboard →
+        </Link>
       </header>
 
       <UploadDropzone onUploaded={refresh} />

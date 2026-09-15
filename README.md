@@ -8,13 +8,14 @@ documents.
 
 ## Status
 
-**Slice 5 (this commit): Route between RAG and SQL.** A new `POST /query`
-endpoint decides for itself whether a question needs semantic search over
-document text, a SQL query over structured records, or both - and for
-"both" questions, synthesizes one coherent answer from both findings
-instead of concatenating them. This is now the main way to use the app -
-see "Asking questions (routed - the main way to use this)" below. See
-`docs/ROADMAP.md` for the full slice-by-slice plan.
+**Slice 6 (this commit): Analytics dashboard.** A new `/dashboard` page
+gives an aggregate view across everything uploaded - document/extraction
+counts, a needs-review count, an extraction status breakdown, and (scoped
+to one currency at a time) revenue over time and a top-vendors breakdown.
+These are fixed, app-authored queries, not LLM-generated - Slice 4's
+text-to-SQL guardrails don't apply here because there's no free-form SQL
+to guard. See "Using the dashboard" below. See `docs/ROADMAP.md` for the
+full slice-by-slice plan.
 
 ## Stack
 
@@ -148,6 +149,24 @@ Upload enqueues a Celery task immediately; poll `GET /documents/{id}` until
 then check `GET /documents/{id}/extractions` for the structured rows. A row's
 own `status` is `"completed"`, `"needs_review"` (validation flagged
 something — see `confidence_flags`), or `"failed"`.
+
+### Using the dashboard
+
+Open **http://localhost:3000/dashboard** (linked from the main page via
+"Dashboard →") for an aggregate view across everything uploaded: document/
+extraction counts, a needs-review count, an extraction status breakdown,
+and - scoped to one currency at a time via the filter control - revenue
+over time and a top-vendors-by-amount breakdown. The currency scoping is
+deliberate: summing amounts across currencies on one shared axis would
+imply a conversion rate this app doesn't have, so revenue/vendor data is
+filtered rather than combined.
+
+The underlying endpoints (`GET /analytics/dashboard/summary`,
+`/currencies`, `/revenue-over-time?currency=EUR`,
+`/vendor-breakdown?currency=EUR`, `/status-distribution`) are fixed,
+app-authored SQL, unrelated to the text-to-SQL guardrails described below -
+those only apply to the LLM-generated free-form queries from
+`/analytics/ask`.
 
 ### Sample files
 

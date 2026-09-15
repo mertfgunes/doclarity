@@ -153,10 +153,31 @@ next one. Don't start Slice N+1 until Slice N works.
       a clean per-vendor list) - same small-model ceiling as every other
       quality note in this roadmap, not investigated further.
 
-## Slice 6 — Analytics dashboard
-- [ ] Aggregation endpoints (revenue over time, customer breakdown,
-      invoice status distribution)
-- [ ] Frontend charts + filters (date, customer, status)
+## Slice 6 — Analytics dashboard  [done]
+- [x] Five fixed, app-authored endpoints under `/analytics/dashboard/*`
+      (`summary`, `currencies`, `revenue-over-time`, `vendor-breakdown`,
+      `status-distribution`) - deliberately plain SQLAlchemy queries against
+      the normal engine, not Slice 4's `sql_guard`/`doclarity_readonly`
+      pipeline, since that's for LLM-generated free-form SQL, not
+      app-authored fixed queries.
+- [x] Revenue and vendor breakdown require an explicit `currency` query
+      param (422 without one) rather than summing across currencies on one
+      axis - mixing them would imply a conversion rate this app doesn't
+      have, so the frontend filters by currency instead.
+- [x] Frontend: new `/dashboard` route (linked from `/` via "Dashboard →").
+      Charts are hand-built inline SVG per the `dataviz` skill, no chart
+      library dependency - a revenue line chart with nice-number y-axis
+      ticks, a horizontal vendor bar chart, and a part-to-whole status
+      distribution bar reusing the exact colors already in `StatusBadge`
+      rather than introducing a second status-color vocabulary.
+- [x] Verified for real: live-tested against the running stack (93
+      documents / 156 extractions from prior slices' sample runs) - a
+      Playwright/Edge screenshot of the live `/dashboard` page,
+      console-error-free, all four widgets and the currency filter
+      rendering with real data. Live integration tests added to
+      `test_live_api.py` (summary/currencies/revenue/vendor/
+      status-distribution, plus a cross-endpoint invariant: status
+      counts must sum to summary's total).
 
 ## Slice 7 — Anomaly detection
 - [ ] Per-customer historical baseline (mean/stddev of invoice amounts)

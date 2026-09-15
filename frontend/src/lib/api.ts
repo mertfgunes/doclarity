@@ -101,4 +101,54 @@ export function askQuestion(question: string, documentId?: string): Promise<Quer
   }).then(unwrap<QueryResponse>);
 }
 
+export interface DashboardSummary {
+  total_documents: number;
+  total_extractions: number;
+  needs_review_count: number;
+}
+
+export interface CurrencyOption {
+  currency: string;
+  invoice_count: number;
+}
+
+export interface RevenuePoint {
+  period: string;
+  total_amount: string;
+  invoice_count: number;
+}
+
+export interface VendorBreakdownRow {
+  vendor_name: string;
+  total_amount: string;
+  invoice_count: number;
+}
+
+export interface StatusDistributionRow {
+  status: ExtractionStatus;
+  count: number;
+}
+
+export function getDashboardSummary(): Promise<DashboardSummary> {
+  return fetch(`${API_URL}/analytics/dashboard/summary`).then(unwrap<DashboardSummary>);
+}
+
+export function getDashboardCurrencies(): Promise<CurrencyOption[]> {
+  return fetch(`${API_URL}/analytics/dashboard/currencies`).then(unwrap<CurrencyOption[]>);
+}
+
+export function getRevenueOverTime(currency: string, interval: "day" | "week" | "month" = "month"): Promise<RevenuePoint[]> {
+  const params = new URLSearchParams({ currency, interval });
+  return fetch(`${API_URL}/analytics/dashboard/revenue-over-time?${params}`).then(unwrap<RevenuePoint[]>);
+}
+
+export function getVendorBreakdown(currency: string, limit = 10): Promise<VendorBreakdownRow[]> {
+  const params = new URLSearchParams({ currency, limit: String(limit) });
+  return fetch(`${API_URL}/analytics/dashboard/vendor-breakdown?${params}`).then(unwrap<VendorBreakdownRow[]>);
+}
+
+export function getStatusDistribution(): Promise<StatusDistributionRow[]> {
+  return fetch(`${API_URL}/analytics/dashboard/status-distribution`).then(unwrap<StatusDistributionRow[]>);
+}
+
 export { ApiError };
