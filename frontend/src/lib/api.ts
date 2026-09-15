@@ -151,4 +151,32 @@ export function getStatusDistribution(): Promise<StatusDistributionRow[]> {
   return fetch(`${API_URL}/analytics/dashboard/status-distribution`).then(unwrap<StatusDistributionRow[]>);
 }
 
+export interface AnomalyRow {
+  extraction_id: string;
+  document_id: string;
+  vendor_name: string;
+  invoice_number: string | null;
+  invoice_date: string | null;
+  total_amount: string;
+  vendor_mean: string;
+  vendor_stddev: string;
+  vendor_invoice_count: number;
+  z_score: number;
+  ratio: number;
+}
+
+export interface AnomalyResponse {
+  currency: string;
+  anomalies: AnomalyRow[];
+  explanation: string;
+}
+
+// Slice 7: per-vendor mean/stddev baseline, flagging invoices that deviate
+// from their own vendor's history rather than from an absolute threshold -
+// see docs/ROADMAP.md Slice 7.
+export function getAnomalies(currency: string): Promise<AnomalyResponse> {
+  const params = new URLSearchParams({ currency });
+  return fetch(`${API_URL}/analytics/anomalies?${params}`).then(unwrap<AnomalyResponse>);
+}
+
 export { ApiError };

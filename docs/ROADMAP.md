@@ -179,9 +179,67 @@ next one. Don't start Slice N+1 until Slice N works.
       status-distribution, plus a cross-endpoint invariant: status
       counts must sum to summary's total).
 
-## Slice 7 — Anomaly detection
-- [ ] Per-customer historical baseline (mean/stddev of invoice amounts)
-- [ ] Flag + explain outliers ("35x higher than this customer's average")
+## Slice 7 — Anomaly detection  [done]
+- [x] New `GET /analytics/anomalies` endpoint (`app/api/anomalies.py`) - same
+      fixed-query rationale as Slice 6's dashboard endpoints (app-authored
+      SQL, not LLM-generated, so it runs on the normal engine, not the
+      sql_guard/`doclarity_readonly` pipeline), and requires an explicit
+      `currency` param for the same reason revenue/vendor-breakdown do -
+      mixing currencies into one vendor's mean/stddev would be meaningless.
+- [x] Per-vendor baseline (mean/stddev of `total_amount` for completed
+      invoices), computed in SQL via `avg`/`stddev_samp`. Vendors below
+      `min_vendor_invoices` (default 3) are excluded entirely - too little
+      history for a baseline to mean anything - and a vendor whose stddev is
+      exactly 0 (every invoice on file identical) is also excluded, since a
+      z-score is undefined with no variance to divide by.
+- [x] Flagging logic pulled into a pure, DB-free function
+      (`app/services/anomaly_detection.py::detect_anomalies`) - takes
+      invoices + baselines + a z-score threshold, returns the outliers
+      sorted most-anomalous-first. Unit-tested directly (`tests/
+      test_anomaly_detection.py`), same pattern as Slice 4's `sql_guard`.
+- [x] LLM call (`LLMService.explain_anomalies`) phrases the flagged rows in
+      plain language - deliberately given only vendor name + the
+      already-computed ratio per row (not asked to do the math itself) and
+      told exactly how many lines to produce, after two rounds of live
+      testing on `llama3.2:3b` (see quality note below) that showed why.
+- [x] Frontend: new "Anomalies" panel on `/dashboard`, one per selected
+      currency alongside revenue/vendor-breakdown (`AnomalyList.tsx`) -
+      vendor, amount vs. that vendor's own average, a red "Nx average"
+      badge, and the LLM explanation underneath. Empty state when nothing's
+      flagged.
+- [x] Verified for real against the live stack: unit tests for the pure
+      z-score logic, live integration tests
+      (`test_anomalies_requires_currency`,
+      `test_anomalies_returns_a_well_formed_response_for_a_known_currency`),
+      and manual verification with a temporarily-inserted outlier row
+      (inserted, exercised, deleted - real seed data is uniform `$150`
+      invoices, so nothing is flagged by default, which is correct
+      behavior, not a gap in coverage). Playwright/Edge screenshot of the
+      live `/dashboard` page, console-error-free, both the empty state and
+      (with a temporarily lowered threshold) a flagged row rendering
+      correctly with the right vendor, amount, ratio, and explanation.
+- **Known quality limitations (observed, `llama3.2:3b`):**
+      1. **Math, not just wording:** the first prompt draft gave the model a
+         worked example ("35x higher than this vendor's average") and it
+         copied that literal number into the real explanation instead of
+         using the actual ~6x ratio in the data - same failure shape as
+         Slice 5's `synthesize_answer` garbling many-row results. Fixed by
+         handing the model only the precomputed ratio per row (never asking
+         it to compute or recall a number) and pinning the exact line count
+         expected; still generic/terse output, but numerically correct.
+      2. **Grubbs' bound on small samples:** with a homogeneous baseline of
+         `n` invoices, the maximum possible sample z-score for a single
+         outlier is mathematically bounded by `sqrt(n-1)` - for `n=7`
+         (typical vendor sample size in this dataset), the ceiling is
+         ~2.449, meaning the default `z_threshold=3.0` can **never** flag a
+         single outlier against a small vendor history no matter how
+         extreme the amount, regardless of any bug. Confirmed directly:
+         inserting one absurd outlier produced `z_score≈2.27` and required
+         lowering `z_threshold` to 2.0 to trigger. Left as a documented
+         limitation of z-score-based detection rather than switching to
+         Grubbs' test or a modified/MAD-based z-score - out of scope for
+         this slice, worth revisiting if vendor sample sizes stay this
+         small in practice.
 
 ## Slice 8 — Production engineering
 - [ ] Auth (JWT), role-based access

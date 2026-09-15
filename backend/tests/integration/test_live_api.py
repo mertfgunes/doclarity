@@ -257,6 +257,39 @@ def test_dashboard_vendor_breakdown_returns_rows_for_a_known_currency(client):
         assert set(body[0].keys()) == {"vendor_name", "total_amount", "invoice_count"}
 
 
+def test_anomalies_requires_currency(client):
+    response = client.get("/analytics/anomalies")
+    assert response.status_code == 422
+
+
+def test_anomalies_returns_a_well_formed_response_for_a_known_currency(client):
+    currencies = client.get("/analytics/dashboard/currencies").json()
+    if not currencies:
+        pytest.skip("no completed invoice data with a currency yet")
+    currency = currencies[0]["currency"]
+
+    response = client.get(f"/analytics/anomalies?currency={currency}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["currency"] == currency
+    assert isinstance(body["anomalies"], list)
+    assert isinstance(body["explanation"], str) and body["explanation"]
+    if body["anomalies"]:
+        assert set(body["anomalies"][0].keys()) == {
+            "extraction_id",
+            "document_id",
+            "vendor_name",
+            "invoice_number",
+            "invoice_date",
+            "total_amount",
+            "vendor_mean",
+            "vendor_stddev",
+            "vendor_invoice_count",
+            "z_score",
+            "ratio",
+        }
+
+
 def test_dashboard_status_distribution_agrees_with_summary(client):
     """Cross-endpoint invariant: the status breakdown and the summary count
     are computed by two separate queries - they'd better agree.

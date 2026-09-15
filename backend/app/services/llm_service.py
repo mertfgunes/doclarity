@@ -233,6 +233,23 @@ def _route_prompt(question: str) -> str:
     return f"Decide how to answer this question: {question}"
 
 
+def _explain_anomalies_prompt(currency: str, anomalies: list[dict]) -> str:
+    lines = "\n".join(
+        f'{i}. vendor "{row["vendor_name"]}", ratio {round(row["ratio"], 1)}' for i, row in enumerate(anomalies, start=1)
+    )
+    return (
+        "These invoices were flagged as statistical outliers against their own "
+        f"vendor's historical average, in {currency}. Below is the exact "
+        f"vendor name and ratio (invoice amount / vendor's own average) for "
+        f"each of the {len(anomalies)} anomaly/anomalies found. Write exactly "
+        f"{len(anomalies)} line(s), one per numbered item below, each stating "
+        "the vendor name and its ratio as '<ratio>x' - use the ratio given, do "
+        "not compute or guess a different number. Output only those lines, "
+        "nothing else (no preamble, no notes).\n\n"
+        f"{lines}"
+    )
+
+
 def _synthesize_prompt(question: str, rag_answer: str, sql_explanation: str) -> str:
     return (
         "Answer the question by combining two findings below into one coherent "
@@ -307,6 +324,9 @@ class _AnthropicBackend:
     def synthesize_answer(self, question: str, rag_answer: str, sql_explanation: str) -> str:
         return self._generate_text(_synthesize_prompt(question, rag_answer, sql_explanation))
 
+    def explain_anomalies(self, currency: str, anomalies: list[dict]) -> str:
+        return self._generate_text(_explain_anomalies_prompt(currency, anomalies))
+
     def _generate_text(self, prompt: str) -> str:
         try:
             message = self._client.messages.create(
@@ -379,6 +399,9 @@ class _OllamaBackend:
 
     def synthesize_answer(self, question: str, rag_answer: str, sql_explanation: str) -> str:
         return self._chat_text(_synthesize_prompt(question, rag_answer, sql_explanation))
+
+    def explain_anomalies(self, currency: str, anomalies: list[dict]) -> str:
+        return self._chat_text(_explain_anomalies_prompt(currency, anomalies))
 
     def _chat_text(self, prompt: str) -> str:
         response = self._post(
@@ -482,3 +505,7 @@ class LLMService:
     def synthesize_answer(self, question: str, rag_answer: str, sql_explanation: str) -> str:
         """Combine a RAG answer and a SQL explanation into one coherent answer."""
         return self._chat_backend.synthesize_answer(question, rag_answer, sql_explanation)
+
+    def explain_anomalies(self, currency: str, anomalies: list[dict]) -> str:
+        """Phrase a batch of already-computed vendor-baseline anomalies in plain language."""
+        return self._chat_backend.explain_anomalies(currency, anomalies)

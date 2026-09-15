@@ -90,6 +90,26 @@ class DashboardSummary(BaseModel):
     needs_review_count: int
 
 
+class AnomalyRow(BaseModel):
+    extraction_id: uuid.UUID
+    document_id: uuid.UUID
+    vendor_name: str
+    invoice_number: Optional[str] = None
+    invoice_date: Optional[date] = None
+    total_amount: Decimal
+    vendor_mean: Decimal
+    vendor_stddev: Decimal
+    vendor_invoice_count: int
+    z_score: float
+    ratio: float
+
+
+class AnomalyResponse(BaseModel):
+    currency: str
+    anomalies: list[AnomalyRow]
+    explanation: str
+
+
 class DocumentExtractionOut(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID

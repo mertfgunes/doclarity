@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import {
+  type AnomalyResponse,
   type CurrencyOption,
   type DashboardSummary,
   type RevenuePoint,
   type StatusDistributionRow,
   type VendorBreakdownRow,
+  getAnomalies,
   getDashboardCurrencies,
   getDashboardSummary,
   getRevenueOverTime,
@@ -19,6 +21,7 @@ import { CurrencyFilter } from "@/components/dashboard/CurrencyFilter";
 import { RevenueLineChart } from "@/components/dashboard/RevenueLineChart";
 import { VendorBarChart } from "@/components/dashboard/VendorBarChart";
 import { StatusDistributionBar } from "@/components/dashboard/StatusDistributionBar";
+import { AnomalyList } from "@/components/dashboard/AnomalyList";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -38,6 +41,7 @@ export default function DashboardPage() {
 
   const [revenue, setRevenue] = useState<RevenuePoint[]>([]);
   const [vendors, setVendors] = useState<VendorBreakdownRow[]>([]);
+  const [anomalies, setAnomalies] = useState<AnomalyResponse | null>(null);
   const [currencyDataPending, startCurrencyTransition] = useTransition();
   const [loadError, setLoadError] = useState(false);
 
@@ -55,12 +59,14 @@ export default function DashboardPage() {
   const loadCurrencyData = useCallback((selected: string) => {
     startCurrencyTransition(async () => {
       try {
-        const [revenueData, vendorData] = await Promise.all([
+        const [revenueData, vendorData, anomalyData] = await Promise.all([
           getRevenueOverTime(selected),
           getVendorBreakdown(selected),
+          getAnomalies(selected),
         ]);
         setRevenue(revenueData);
         setVendors(vendorData);
+        setAnomalies(anomalyData);
         setLoadError(false);
       } catch {
         setLoadError(true);
@@ -118,6 +124,10 @@ export default function DashboardPage() {
 
             <ChartCard title={`Top vendors by amount (${currency})`}>
               <VendorBarChart rows={vendors} currency={currency ?? ""} />
+            </ChartCard>
+
+            <ChartCard title={`Anomalies (${currency})`}>
+              {anomalies && <AnomalyList anomalies={anomalies.anomalies} explanation={anomalies.explanation} currency={currency ?? ""} />}
             </ChartCard>
           </div>
         </>
