@@ -8,11 +8,11 @@ documents.
 
 ## Status
 
-**Slice 3 (this commit): Embed → RAG Q&A with citations.** PDFs are now
-chunked and embedded (own Celery task, independent of Slice 2's extraction)
-into a pgvector column. `POST /ask` embeds a question, finds the closest
-chunks, and answers grounded in them with filename/page citations. See
-`docs/ROADMAP.md` for the full slice-by-slice plan.
+**Slice 4 (this commit): Text-to-SQL analytics.** A new `/analytics/ask`
+endpoint turns a natural-language question into a SQL query, validates it,
+runs it against a read-only DB role, and returns the SQL + rows + a
+plain-language explanation. See "Asking questions about your data (SQL)"
+below. See `docs/ROADMAP.md` for the full slice-by-slice plan.
 
 ## Stack
 
@@ -28,6 +28,13 @@ chunks, and answers grounded in them with filename/page citations. See
 1. Start infra:
    ```bash
    docker compose up -d
+   ```
+   On a fresh volume this also creates the `doclarity_readonly` Postgres role
+   used by Slice 4's analytics endpoint (`db/init/01_readonly_role.sql` runs
+   automatically). If you already had the `postgres` container running from
+   before that file existed, apply it once by hand:
+   ```bash
+   docker exec -i doclarity_postgres psql -U doclarity -d doclarity < db/init/01_readonly_role.sql
    ```
 2. Backend:
    ```bash
@@ -98,6 +105,25 @@ CSV/XLSX rows go through structured extraction instead (see
 `document_extractions`), since tabular data doesn't have a natural "page" to
 cite.
 
+### Asking questions about your data (SQL)
+
+For aggregation across many documents - queries `documents`/
+`document_extractions` directly rather than searching text:
+
+```bash
+curl -X POST http://localhost:8000/analytics/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What is the total invoice amount by currency, for completed extractions only?"}'
+```
+
+The response includes the generated `sql` (so you can see exactly what ran,
+not just trust a black box), the result `rows`, and a plain-language
+`explanation`. Only `SELECT` statements over `documents`/`document_extractions`
+are allowed - see the guardrails note further down. A query that fails
+that check comes back as `422` with the reason; a query that's valid SQL but
+fails to execute (e.g. references a column that doesn't exist) comes back as
+`400`.
+
 Upload enqueues a Celery task immediately; poll `GET /documents/{id}` until
 `status` moves off `"uploaded"`/`"processing"` to `"processed"` or `"failed"`,
 then check `GET /documents/{id}/extractions` for the structured rows. A row's
@@ -140,13 +166,15 @@ cd backend
 pytest tests/ -v
 ```
 
-This runs both the unit tests (parsers, validation, chunking, row-building —
-no network or database needed) and `tests/integration/test_live_api.py`,
-which exercises the actual running stack: upload → Celery pickup → a
-terminal status, `/ask` returning a grounded answer with a citation, plus
-the list/get/404 endpoints. The integration tests auto-skip if nothing is
-listening on `http://localhost:8000`, so `pytest tests/` is safe to run
-whether or not the server is up.
+This runs both the unit tests (parsers, validation, chunking, the SQL
+guardrail, row-building — no network or database needed) and
+`tests/integration/test_live_api.py`, which exercises the actual running
+stack: upload → Celery pickup → a terminal status, `/ask` returning a
+grounded answer with a citation, `/analytics/ask` returning real SQL results
+(and rejecting an attempted write), plus the list/get/404 endpoints. The
+integration tests auto-skip if nothing is listening on
+`http://localhost:8000`, so `pytest tests/` is safe to run whether or not
+the server is up.
 
 ## Why this architecture
 
@@ -159,3 +187,10 @@ whether or not the server is up.
 - **Explicit RAG-vs-SQL routing (Slice 5)** — the differentiator vs. a
   typical "chat with your PDF" student project. Worth being able to explain
   in detail in an interview.
+- **Two independent guardrail layers for text-to-SQL, not one** — an
+  app-level `sqlglot` parse that rejects anything but a single `SELECT` over
+  an explicit table allowlist, *and* a dedicated `doclarity_readonly`
+  Postgres role that physically cannot write regardless of what SQL reaches
+  it. The interesting failure mode for LLM-generated SQL isn't "the query is
+  slightly wrong" — it's "the query does something you didn't ask for", so
+  the second layer exists specifically to survive the first one having a bug.

@@ -148,11 +148,52 @@ class LLMTransientError(Exception):
     """Retryable failure talking to the LLM backend (network, rate limit, 5xx)."""
 
 
+_GENERATE_SQL_TOOL = {
+    "name": "record_sql",
+    "description": "Record the read-only SQL SELECT statement that answers the question.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "sql": {
+                "type": "string",
+                "description": "A single PostgreSQL SELECT statement. No trailing semicolon, no other statement types.",
+            },
+        },
+        "required": ["sql"],
+    },
+}
+
+_OLLAMA_SQL_SCHEMA = {
+    "type": "object",
+    "properties": {"sql": {"type": "string"}},
+    "required": ["sql"],
+}
+
+
 def _rag_prompt(question: str, context: str) -> str:
     return (
         "Answer the question using only the context below. If the context doesn't "
         "contain the answer, say you don't know - don't make anything up.\n\n"
         f"Context:\n{context}\n\nQuestion: {question}"
+    )
+
+
+def _sql_prompt(question: str, schema_description: str) -> str:
+    return (
+        "Write a single read-only PostgreSQL SELECT statement that answers the "
+        "question, using only the tables and columns described below. Never use "
+        "INSERT, UPDATE, DELETE, or any statement other than SELECT. No trailing "
+        "semicolon, no commentary - just the query.\n\n"
+        f"{schema_description}\n\nQuestion: {question}"
+    )
+
+
+def _explain_prompt(question: str, sql: str, rows: list[dict]) -> str:
+    return (
+        "A user asked a question about their data, and this SQL query was run "
+        "against the database to answer it. Explain the result in plain language, "
+        "directly answering the question. Don't mention SQL or the query itself.\n\n"
+        f"Question: {question}\n\nQuery: {sql}\n\nResult rows (JSON): {json.dumps(rows, default=str)}"
     )
 
 
@@ -194,6 +235,17 @@ class _AnthropicBackend:
 
     def answer_question(self, question: str, context: str) -> str:
         return self._generate_text(_rag_prompt(question, context))
+
+    def generate_sql(self, question: str, schema_description: str) -> str:
+        message = self._create(
+            tools=[_GENERATE_SQL_TOOL],
+            tool_choice={"type": "tool", "name": "record_sql"},
+            content=_sql_prompt(question, schema_description),
+        )
+        return self._tool_input(message, "record_sql")["sql"]
+
+    def explain_query_results(self, question: str, sql: str, rows: list[dict]) -> str:
+        return self._generate_text(_explain_prompt(question, sql, rows))
 
     def _generate_text(self, prompt: str) -> str:
         try:
@@ -253,6 +305,13 @@ class _OllamaBackend:
 
     def answer_question(self, question: str, context: str) -> str:
         return self._chat_text(_rag_prompt(question, context))
+
+    def generate_sql(self, question: str, schema_description: str) -> str:
+        result = self._chat_json(_sql_prompt(question, schema_description), _OLLAMA_SQL_SCHEMA)
+        return result["sql"]
+
+    def explain_query_results(self, question: str, sql: str, rows: list[dict]) -> str:
+        return self._chat_text(_explain_prompt(question, sql, rows))
 
     def _chat_text(self, prompt: str) -> str:
         response = self._post(
@@ -336,3 +395,11 @@ class LLMService:
     def answer_question(self, question: str, context: str) -> str:
         """Answer a question grounded in pre-retrieved context chunks (RAG)."""
         return self._chat_backend.answer_question(question, context)
+
+    def generate_sql(self, question: str, schema_description: str) -> str:
+        """Generate a single read-only SELECT statement answering the question."""
+        return self._chat_backend.generate_sql(question, schema_description)
+
+    def explain_query_results(self, question: str, sql: str, rows: list[dict]) -> str:
+        """Turn SQL query results into a plain-language answer."""
+        return self._chat_backend.explain_query_results(question, sql, rows)

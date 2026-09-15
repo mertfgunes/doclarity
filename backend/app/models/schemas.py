@@ -37,6 +37,18 @@ class AskResponse(BaseModel):
     citations: list[Citation]
 
 
+class AnalyticsAskRequest(BaseModel):
+    question: str
+
+
+class AnalyticsAskResponse(BaseModel):
+    sql: str
+    rows: list[dict[str, Any]]
+    row_count: int
+    truncated: bool
+    explanation: str
+
+
 class DocumentExtractionOut(BaseModel):
     id: uuid.UUID
     document_id: uuid.UUID

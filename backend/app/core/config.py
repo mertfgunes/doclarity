@@ -7,6 +7,11 @@ class Settings(BaseSettings):
     # Postgres
     database_url: str = "postgresql://doclarity:doclarity@localhost:5432/doclarity"
 
+    # Least-privilege role for executing LLM-generated SQL (Slice 4). Can
+    # only SELECT - see db/init/01_readonly_role.sql. Defense in depth
+    # alongside the app-level query validator in app/services/sql_guard.py.
+    analytics_database_url: str = "postgresql://doclarity_readonly:doclarity_readonly@localhost:5432/doclarity"
+
     # Redis / Celery
     redis_url: str = "redis://localhost:6379/0"
 
