@@ -1,0 +1,125 @@
+databases:
+  - name: doclarity-db
+    databaseName: doclarity
+    user: doclarity
+    plan: free
+    postgresMajorVersion: 16
+
+services:
+  - type: redis
+    name: doclarity-redis
+    plan: free
+    ipAllowList: []
+
+  # Runs the Ollama models (chat + embeddings) as a private service, not
+  # publicly reachable. llama3.2:3b + nomic-embed-text need more RAM than the
+  # free instance plan gives you - use at least "starter".
+  - type: pserv
+    name: doclarity-ollama
+    runtime: image
+    plan: starter
+    image:
+      url: docker.io/ollama/ollama:latest
+    disk:
+      name: ollama-models
+      mountPath: /root/.ollama
+      sizeGB: 10
+    dockerCommand: >
+      sh -c "ollama serve & sleep 5 && ollama pull llama3.2:3b && ollama pull nomic-embed-text && wait"
+
+  - type: web
+    name: doclarity-backend
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: doclarity-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: doclarity-redis
+          property: connectionString
+      # Least-privilege SELECT-only role for Slice 4 analytics SQL - create
+      # it by running db/init/01_readonly_role.sql against DATABASE_URL once,
+      # then paste its connection string here.
+      - key: ANALYTICS_DATABASE_URL
+        sync: false
+      - key: LLM_PROVIDER
+        value: ollama
+      - key: EMBEDDING_PROVIDER
+        value: ollama
+      # Fill in with doclarity-ollama's internal address shown in its Render
+      # dashboard page (private services are reachable at
+      # http://<service-name>:<port> from other services in the same region).
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_CHAT_MODEL
+        value: llama3.2:3b
+      - key: OLLAMA_EMBED_MODEL
+        value: nomic-embed-text
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto
+      # Vercel frontend URL(s), comma-separated
+      - key: CORS_ORIGINS
+        sync: false
+      - key: ENVIRONMENT
+        value: production
+
+  - type: worker
+    name: doclarity-worker
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.core.celery_app worker --loglevel=info
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: doclarity-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: doclarity-redis
+          property: connectionString
+      - key: LLM_PROVIDER
+        value: ollama
+      - key: EMBEDDING_PROVIDER
+        value: ollama
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_CHAT_MODEL
+        value: llama3.2:3b
+      - key: OLLAMA_EMBED_MODEL
+        value: nomic-embed-text
+      - key: STORAGE_BACKEND
+        value: s3
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: ENVIRONMENT
+        value: production

@@ -5,8 +5,8 @@ from typing import List
 from fastapi import APIRouter, UploadFile, File, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core import storage
 from app.core.auth import get_current_user, require_admin
-from app.core.config import settings
 from app.core.db import get_db
 from app.models.document import Document, ProcessingStatus
 from app.models.extraction import DocumentExtraction
@@ -30,15 +30,11 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
 
-    os.makedirs(settings.upload_dir, exist_ok=True)
-
     file_id = uuid.uuid4()
     ext = os.path.splitext(file.filename)[1]
-    storage_path = os.path.join(settings.upload_dir, f"{file_id}{ext}")
 
     contents = await file.read()
-    with open(storage_path, "wb") as f:
-        f.write(contents)
+    storage_path = storage.save(contents, f"{file_id}{ext}")
 
     doc = Document(
         id=file_id,

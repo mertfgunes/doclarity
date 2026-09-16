@@ -35,11 +35,20 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24
 
-    # Storage (local for dev; swap for S3 in production phase)
+    # Storage: "local" (dev, disk under upload_dir) or "s3" (S3-compatible,
+    # e.g. Cloudflare R2 - set s3_endpoint_url for R2/non-AWS providers).
+    storage_backend: str = "local"
     upload_dir: str = "./uploaded_files"
+    s3_bucket: str = ""
+    s3_endpoint_url: str = ""
+    s3_access_key_id: str = ""
+    s3_secret_access_key: str = ""
+    s3_region: str = "auto"
 
     # App
     environment: str = "development"
+    # Comma-separated list of allowed CORS origins (frontend URL(s)).
+    cors_origins: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

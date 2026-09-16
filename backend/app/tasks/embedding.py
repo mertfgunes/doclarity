@@ -2,6 +2,7 @@ import logging
 
 from celery.exceptions import MaxRetriesExceededError
 
+from app.core import storage
 from app.core.celery_app import celery_app
 from app.core.db import SessionLocal
 from app.models.chunk import DocumentChunk
@@ -20,7 +21,8 @@ EMBED_BATCH_SIZE = 32
 
 def _build_chunk_rows(document) -> list[DocumentChunk]:
     llm = LLMService()
-    pages = extract_pdf_pages(document.storage_path)
+    with storage.open_local(document.storage_path) as path:
+        pages = extract_pdf_pages(path)
     chunks = chunk_pdf_pages(pages)
 
     rows = []

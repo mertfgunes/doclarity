@@ -6,6 +6,7 @@ from typing import Any
 from celery.exceptions import MaxRetriesExceededError
 from dateutil import parser as dateutil_parser
 
+from app.core import storage
 from app.core.celery_app import celery_app
 from app.core.db import SessionLocal
 from app.models.document import Document, ProcessingStatus
@@ -98,7 +99,8 @@ def _make_row(
 
 
 def _rows_from_pdf(document, llm: LLMService) -> list[DocumentExtraction]:
-    text = extract_pdf_text(document.storage_path)
+    with storage.open_local(document.storage_path) as path:
+        text = extract_pdf_text(path)
     result = llm.extract_document_fields(text)
     doc_type = DocumentType(result.get("document_type", "unknown"))
 
@@ -126,7 +128,8 @@ def _rows_from_pdf(document, llm: LLMService) -> list[DocumentExtraction]:
 
 
 def _rows_from_tabular(document, llm: LLMService) -> list[DocumentExtraction]:
-    parsed = parse_tabular_file(document.storage_path, document.content_type)
+    with storage.open_local(document.storage_path) as path:
+        parsed = parse_tabular_file(path, document.content_type)
     mapping = llm.map_csv_columns(parsed.columns, parsed.sample_rows)
     mapping = {field: col for field, col in mapping.items() if field in CANONICAL_INVOICE_FIELDS}
 
