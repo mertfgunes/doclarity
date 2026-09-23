@@ -93,13 +93,19 @@ services:
       - key: ENVIRONMENT
         value: production
 
-  - type: worker
+  # Runs the Celery worker. This has to be a "web" service, not a
+  # background worker, because Render's free workspace plan doesn't allow
+  # background workers either (same restriction as private services on
+  # doclarity-ollama above). The Celery process runs in the background of
+  # the same container; the foreground process is only a stub HTTP server
+  # so Render's health check has something to see on $PORT.
+  - type: web
     name: doclarity-worker
     runtime: python
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: celery -A app.core.celery_app worker --loglevel=info
+    startCommand: (celery -A app.core.celery_app worker --loglevel=info &) && python -m http.server $PORT
     envVars:
       - fromGroup: doclarity-shared
       - key: DATABASE_URL
