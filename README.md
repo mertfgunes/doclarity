@@ -9,6 +9,21 @@ total spend by vendor?"), or both at once ("why did spend spike last
 month?") — and it figures out on its own whether that needs document
 search, a database query, or a combination of the two.
 
+## Live demo
+
+- **App**: [doclarity.vercel.app](https://doclarity.vercel.app)
+- **API docs**: [doclarity-backend.onrender.com/docs](https://doclarity-backend.onrender.com/docs)
+
+Deployed entirely on free-tier infrastructure (Render + Vercel) — see
+"Deployment" below for what that actually took, including a couple of
+constraints that are still open. In short: registration, auth, uploads,
+and the analytics dashboard/SQL all work as described; the chat/extraction
+path (`/query`, `/ask`, document processing) depends on a self-hosted
+Ollama instance that occasionally gets OOM-killed under the free plan's
+512MB RAM ceiling, and uploaded files don't survive a service restart
+since the free plan has no persistent disk. Both are documented, known
+trade-offs of the $0/month setup, not bugs.
+
 ## How it works
 
 1. **Upload.** A PDF, CSV, or XLSX comes in through `POST /documents/upload`
@@ -347,3 +362,48 @@ without a live server.
   A "give yourself any role you like" field on a public endpoint is exactly
   the kind of privilege-escalation bug worth designing out rather than
   trusting validation to catch.
+
+## Deployment
+
+The [live demo](#live-demo) runs entirely on free-tier compute: Postgres,
+Redis, the FastAPI backend, the Celery worker, and a self-hosted Ollama
+instance all on Render, with the Next.js frontend on Vercel. Render's free
+workspace plan turned out to have more restrictions than its pricing page
+suggests, so getting there took a few real workarounds rather than a
+straight `render.yaml` deploy:
+
+- **No private services or background workers on the free plan** — both
+  `doclarity-ollama` and `doclarity-worker` had to become `web` services.
+  The Celery worker runs in the background of its container with a stub
+  `http.server` in the foreground purely so Render's health check has
+  something to respond on `$PORT`.
+- **A public Ollama needs its own auth** — Ollama has no built-in
+  authentication, but making it a `web` service means it's reachable from
+  the public internet, not just the backend. [`deploy/ollama/proxy.py`](deploy/ollama/proxy.py)
+  is a ~50-line reverse proxy that rejects any request without a
+  shared-secret bearer token, wired to the backend/worker via a Render
+  environment group so the same secret never has to be typed twice.
+- **No persistent disk on the free plan** — Ollama's models and the
+  locally-stored uploaded files don't survive a restart or an idle
+  spin-down. Acceptable for a portfolio demo; the fix in both cases is a
+  paid plan (a disk for Ollama, an S3/R2 bucket for storage).
+- **512MB RAM is a hard ceiling `llama3.2:3b` doesn't fit under** —
+  confirmed directly from Render's event log (`Ran out of memory (used
+  over 512MB)`), not inferred. Pulling the model to disk works fine; it's
+  loading it into RAM for an actual inference call that gets OOM-killed,
+  which restarts the container and re-triggers the model download from
+  scratch. This is the one constraint without a free-tier fix — the
+  honest options are paying for more RAM on that one service, or moving
+  chat off Ollama onto a hosted API for that path while keeping
+  embeddings (a much smaller model) on Ollama.
+- **Smaller platform-specific fixes along the way**: Render's default
+  Python (3.13) has no prebuilt `pandas` wheel, which meant a 10+ minute
+  from-source build until `PYTHON_VERSION` was pinned to 3.12; and
+  Celery's default prefork concurrency spawns one worker process per
+  reported CPU core, which alone was enough to OOM the free plan before
+  the RAM ceiling above was even reached — capped at `--concurrency=2`.
+
+None of this is hidden from the deployed app itself: the constraints above
+are exactly why the chat/extraction path is the one part of the live demo
+that can fail, while auth, uploads, and analytics SQL don't depend on
+Ollama's chat model and work reliably.
