@@ -33,8 +33,8 @@ services:
     plan: free
     dockerfilePath: ./deploy/ollama/Dockerfile
     dockerContext: ./deploy/ollama
-    envVarGroups:
-      - doclarity-shared
+    envVars:
+      - fromGroup: doclarity-shared
 
   - type: web
     name: doclarity-backend
@@ -43,9 +43,8 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    envVarGroups:
-      - doclarity-shared
     envVars:
+      - fromGroup: doclarity-shared
       - key: DATABASE_URL
         fromDatabase:
           name: doclarity-db
@@ -101,9 +100,8 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A app.core.celery_app worker --loglevel=info
-    envVarGroups:
-      - doclarity-shared
     envVars:
+      - fromGroup: doclarity-shared
       - key: DATABASE_URL
         fromDatabase:
           name: doclarity-db
