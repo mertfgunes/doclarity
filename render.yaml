@@ -44,6 +44,11 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      # Render's default Python (3.13) has no prebuilt pandas 2.2.3 wheel,
+      # so it compiles from source - painfully slow on free tier's CPU.
+      # 3.12 has a wheel.
+      - key: PYTHON_VERSION
+        value: 3.12.3
       - fromGroup: doclarity-shared
       - key: DATABASE_URL
         fromDatabase:
@@ -107,6 +112,9 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: (celery -A app.core.celery_app worker --loglevel=info &) && python -m http.server $PORT
     envVars:
+      # See doclarity-backend's PYTHON_VERSION for why.
+      - key: PYTHON_VERSION
+        value: 3.12.3
       - fromGroup: doclarity-shared
       - key: DATABASE_URL
         fromDatabase:
