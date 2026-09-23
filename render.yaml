@@ -12,12 +12,13 @@ services:
     ipAllowList: []
 
   # Runs the Ollama models (chat + embeddings) as a private service, not
-  # publicly reachable. llama3.2:3b + nomic-embed-text need more RAM than the
-  # free instance plan gives you - use at least "starter".
+  # publicly reachable. llama3.2:3b + nomic-embed-text likely need more RAM
+  # than the free plan's 512MB - bump to a paid plan with more RAM if this
+  # OOMs on startup.
   - type: pserv
     name: doclarity-ollama
     runtime: image
-    plan: starter
+    plan: free
     image:
       url: docker.io/ollama/ollama:latest
     disk:
