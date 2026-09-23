@@ -80,18 +80,11 @@ services:
         value: nomic-embed-text
       - key: JWT_SECRET_KEY
         generateValue: true
+      # No S3/R2 bucket set up - local disk instead. Render's free plan has
+      # no persistent disk, so uploaded files are lost on every restart/
+      # spin-down. Switch to "s3" once a bucket is available.
       - key: STORAGE_BACKEND
-        value: s3
-      - key: S3_BUCKET
-        sync: false
-      - key: S3_ENDPOINT_URL
-        sync: false
-      - key: S3_ACCESS_KEY_ID
-        sync: false
-      - key: S3_SECRET_ACCESS_KEY
-        sync: false
-      - key: S3_REGION
-        value: auto
+        value: local
       # Vercel frontend URL(s), comma-separated
       - key: CORS_ORIGINS
         sync: false
@@ -138,17 +131,8 @@ services:
         value: llama3.2:3b
       - key: OLLAMA_EMBED_MODEL
         value: nomic-embed-text
+      # See doclarity-backend's STORAGE_BACKEND for why this is local.
       - key: STORAGE_BACKEND
-        value: s3
-      - key: S3_BUCKET
-        sync: false
-      - key: S3_ENDPOINT_URL
-        sync: false
-      - key: S3_ACCESS_KEY_ID
-        sync: false
-      - key: S3_SECRET_ACCESS_KEY
-        sync: false
-      - key: S3_REGION
-        value: auto
+        value: local
       - key: ENVIRONMENT
         value: production
