@@ -360,7 +360,8 @@ class _AnthropicBackend:
 
 class _OllamaBackend:
     def __init__(self):
-        self._client = httpx.Client(base_url=settings.ollama_base_url, timeout=120.0)
+        headers = {"Authorization": f"Bearer {settings.ollama_api_key}"} if settings.ollama_api_key else {}
+        self._client = httpx.Client(base_url=settings.ollama_base_url, timeout=120.0, headers=headers)
 
     def extract_document_fields(self, text: str) -> dict:
         return self._chat_json(

@@ -1,3 +1,11 @@
+envVarGroups:
+  # Shared secret between doclarity-ollama's auth proxy and the
+  # services that call it - see deploy/ollama/proxy.py for why.
+  - name: doclarity-shared
+    envVars:
+      - key: OLLAMA_API_KEY
+        generateValue: true
+
 databases:
   - name: doclarity-db
     databaseName: doclarity
@@ -11,19 +19,22 @@ services:
     plan: free
     ipAllowList: []
 
-  # Runs the Ollama models (chat + embeddings) as a private service, not
-  # publicly reachable. Free plan doesn't support disks, so no persistent
-  # storage for models - they re-download on every restart/spin-down, and
-  # 512MB RAM is likely too little to load them. Bump to a paid plan with
-  # a disk if this is too slow or OOMs.
-  - type: pserv
+  # Runs the Ollama models (chat + embeddings). This has to be a public web
+  # service, not a private service, because Render's free workspace plan
+  # doesn't allow private services at all. Since Ollama itself has no auth,
+  # deploy/ollama wraps it in a tiny proxy that requires the OLLAMA_API_KEY
+  # bearer token on every request. Free plan also has no disk support, so
+  # models re-download on every restart/spin-down, and 512MB RAM is likely
+  # too little to load them reliably - bump to a paid plan (and add back a
+  # disk) if this is too slow or OOMs.
+  - type: web
     name: doclarity-ollama
-    runtime: image
+    runtime: docker
     plan: free
-    image:
-      url: docker.io/ollama/ollama:latest
-    dockerCommand: >
-      sh -c "ollama serve & sleep 5 && ollama pull llama3.2:3b && ollama pull nomic-embed-text && wait"
+    dockerfilePath: ./deploy/ollama/Dockerfile
+    dockerContext: ./deploy/ollama
+    envVarGroups:
+      - doclarity-shared
 
   - type: web
     name: doclarity-backend
@@ -32,6 +43,8 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVarGroups:
+      - doclarity-shared
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -51,9 +64,10 @@ services:
         value: ollama
       - key: EMBEDDING_PROVIDER
         value: ollama
-      # Fill in with doclarity-ollama's internal address shown in its Render
-      # dashboard page (private services are reachable at
-      # http://<service-name>:<port> from other services in the same region).
+      # Fill in with doclarity-ollama's public URL shown on its Render
+      # dashboard page (e.g. https://doclarity-ollama.onrender.com) -
+      # requests need the OLLAMA_API_KEY bearer token, which the app adds
+      # automatically once that's set.
       - key: OLLAMA_BASE_URL
         sync: false
       - key: OLLAMA_CHAT_MODEL
@@ -87,6 +101,8 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: celery -A app.core.celery_app worker --loglevel=info
+    envVarGroups:
+      - doclarity-shared
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -101,6 +117,7 @@ services:
         value: ollama
       - key: EMBEDDING_PROVIDER
         value: ollama
+      # Same public URL as doclarity-backend's OLLAMA_BASE_URL above.
       - key: OLLAMA_BASE_URL
         sync: false
       - key: OLLAMA_CHAT_MODEL

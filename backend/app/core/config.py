@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_chat_model: str = "llama3.2:3b"
     ollama_embed_model: str = "nomic-embed-text"
+    # Only needed when Ollama sits behind deploy/ollama's auth proxy (public
+    # deployments) - local Ollama has no auth, so this is blank in dev.
+    ollama_api_key: str = ""
 
     # Auth (Slice 8). Change jwt_secret_key for any real deployment - this
     # default is only safe for local dev.
