@@ -110,7 +110,9 @@ services:
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: (celery -A app.core.celery_app worker --loglevel=info &) && python -m http.server $PORT
+    # --concurrency=2: default prefork concurrency (one process per CPU
+    # core, reported as 8 here) OOMs on free tier's 512MB RAM.
+    startCommand: (celery -A app.core.celery_app worker --loglevel=info --concurrency=2 &) && python -m http.server $PORT
     envVars:
       # See doclarity-backend's PYTHON_VERSION for why.
       - key: PYTHON_VERSION
